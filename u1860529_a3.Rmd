@@ -1,0 +1,768 @@
+---
+title: "PS923 Methods & Analysis in Behavioural Science  Assessment 3"
+author: 'Student ID: 1860529'
+date: "18/12/2018"
+output: pdf_document
+mainfont: Times New Roman
+editor_options: 
+  chunk_output_type: console 
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Preparation
+
+```{r packages, message=FALSE, warning=FALSE}
+library("tidyverse")
+library("afex")
+library("emmeans")
+library("cowplot")
+library("car")
+library("Amelia") #For the maps of missing values
+library("DHARMa") #For the residual analysis
+
+theme_set(theme_bw(base_size = 15) + 
+            theme(panel.grid.major.x = element_blank(),
+                  panel.grid.minor.x = element_blank()))
+
+set_sum_contrasts()
+```
+
+# Task 1: The Framing Effect
+
+## Section 1
+
+### Introduction 
+The framing effect states that individuals avoid risks when an outcome is presented in a positive frame, such as a gain, and seek risks when an outcome is presented in a negative frame, such as a loss. The main research question in this paper is whether or not the data we use shows the framing effect (more risky choices under loss frame than under gain frame). Moreover, we intended to know whether participants generally exhibit risk aversion (the average probability of people choosing the risky option is below 50%).
+
+### Data description 
+We use the data from three independent replication attempts of the original framing effect (ConnecticutCollege, Malaysia and Prague) collected as part of Many Labs 1 (Klein et al., 2014) to test if it shows any framing effect. There are five variables in the data: *session_id* (participant identifier), *sample* (source of the sample), *framing*, *risky_choice* and *age*. More specifically, the dependent variable *risky_choice* is a binary variable with the value 1 represents the risky option, 0 represents the safe option. The main explanatory variable *framing* has two factors: gain and loss. 
+
+### Model 
+Based on the structure of the dependent variable (binary variable), in this paper, we use a generalised linear model (GLM) with a binomial family of the residuals (using the canonical link, the logit) to analyse the research question. 
+
+The *age* variable has a range of 12 to 39, but most participants are around 22 years old. Besides, it does not give a good explanation of the dependent variable, and it also does not show any significant interaction with other variables. Therefore, we do not consider the variable of age in our model. 
+
+Firstly, we only use the *framing* variable as the explainary variable: $logit(riskychoice) = ln(\displaystyle \frac{riskychoice = 1}{riskychoice = 0}) = \beta _{0} + \beta _{1}framing$. Secondly, we added the variable *sample* and its interaction with *framing* into the model as: $logit(riskychoice) = ln(\displaystyle \frac{riskychoice = 1}{riskychoice = 0}) = \beta _{0} + \beta _{1}framing + \beta _{2}sample + \beta _{3}framing*sample$.
+
+Additionally, we want to know if there is any risk aversion in the data. Therefore, we also performed the t-tests (with the null hypothesis that the true mean of *risky_choice* is not less than 0.5) to see if the average probability of participants choosing the risky option is below 50%. 
+
+### Result
+By using the logistic regression models and the follow-up analyses, we can see that in the first model, there are significant framing effects, $\chi^2(1)$ = 17.36, *p* < 0.01, displayed in graph A of Figure 1. Inspection of graph B in Figure 1 suggested that the significance levels of the framing effect among different samples differ. In the second model, there are significant main effects of the variables *sample* and *framing*. More specifically, for the *sample* variable, $\chi^2(2)$ = 7.21, *p* = 0.03; for the *framing* variable, $\chi^2(1)$ = 16.01, *p* < 0.01. From the ANOVA $\chi^2$ test we can see that the second model significantly differs from the first model (*p* = 0.02). Therefore, it is necessary to consider the *sample* variable into our analysis. For all of the follow-up analyses reported below, we restricted the overall probability of committing a Type 1 error to 0.05 using the Bonferroni-Holm method. 
+
+Firstly, based on the results of the first model, we can see from Table 1 that the probability of participants choosing the risky option under the gain frame is 0.38 (fewer people choosing the risky option under gain frame). In another word, under the gain frame, people are 0.6 times more likely to choose the risky option. The probability of participants choosing the risky option under the loss frame is 0.63 (more people choosing the risky option under loss frame). This means under the loss frame, people are 1.7 times more likely to choose the risky over safe option. The odds ratio, in this case, is 0.35, which means the ratio of the likelihoods of people choosing the risky over the safe option under the gain and loss frame is 0.35 (*p* < 0.01). 
+
+Secondly, for the second model, the follow-up test gives us more information about the framing effect among different samples. In general, the probability of participants choosing the risky option under a loss frame is higher than under a gain frame for all samples. For the difference of choosing the risky option under a gain and loss frame, there is only one significant difference between the ConnecticutCollege and Prague sample (*p* = 0.02). Moreover, odds ratios differ among different samples. The odds ratio of the gain over loss frame is 0.18 for ConnecticutCollege, which means the ratio of the likelihoods of people choosing the risky over the safe option under the gain and loss frame is 0.18 (*p* < 0.01). The odds ratio is 0.30 for Malaysia. Therefore in Malaysia sample, the ratio of the likelihoods of people choosing the risky over the safe option under the gain and loss frame is 0.30 (*p* < 0.01). Moreover, the odds ratio is not significant for Prague (odds ratio = 0.82, *p* = 0.67).
+
+Additionally, by using the t-tests, we can observe that the average probability of choosing the risky option is 0.48, but it is not significantly less that 0.50 (*p* = 0.29). For seperate samples, there is also no significant risk aversion (for ConnecticutCollege: mean = 0.43, *p* = 0.09; for Malaysia: mean = 0.59, *p* = 0.96; for Prague: mean = 0.42, *p* = 0.08).  
+
+Moreover, by performing tests for the residuals of the models, the quantile plots (also called normal probability plots) do not raise any significant concern with the normality of the residuals. On the other hand, by checking the adequacy for both the GLM models, we found agreements between observed data and predictions. Therefore, the results of the models are reliable. 
+```{r fdisplay1, include=FALSE}
+fram <- read_csv("framing_replication.csv") %>%
+  mutate(sample = as.factor(sample), 
+         framing = factor(framing, 
+                          levels = c("gain", "loss"), 
+                          labels = c("Gain", "Loss")))
+```
+```{r fdisplay2, echo=FALSE, message=FALSE, warning=FALSE, fig.height=5, fig.width=10, fig.align='center'}
+aov_glm1 <- aov_car(risky_choice ~ sample*framing + Error(session_id), 
+                    fram, family = binomial("logit"))
+
+af1 <- afex_plot(aov_glm1, "framing",
+                 trace = "framing", 
+                 legend_title = "Frame Types",
+                 mapping = c("shape"), 
+                 group = framing) +
+  geom_line(aes(group = 1)) +
+  xlab("Frame Types") + 
+  ylab("% Of choose risky option") +
+  theme_grey() +
+  theme(legend.position = "bottom") 
+
+af2 <- afex_plot(aov_glm1, "framing",
+                 trace = "sample",
+                 legend_title = "Sample Source",
+                 mapping = c("shape")) +
+  xlab("Frame Types") + 
+  ylab("% Of choose risky option") +
+  theme_grey() +
+  theme(legend.position = "bottom") 
+
+plot_grid(af1, af2, labels = "AUTO")
+```
+
+*Figure 1.* The framing effect (graph A) and this effect under different samples (graph B). In graph B, different lines represent the framing effect in different samples. 
+
+| Frame Type  | Sample             | Odds.ratio | SE   | df  | z.ratio | p.value |
+|-------------|--------------------|------------|------|-----|---------|---------|
+| Gain / Loss | All samples        | 0.35       | 0.09 | Inf | -4.10   | 0.00    |
+| Gain / Loss | ConnecticutCollege | 0.18       | 0.09 | Inf | -3.66   | 0.00    |
+| Gain / Loss | Malaysia           | 0.30       | 0.13 | Inf | -2.75   | 0.01    |
+| Gain / Loss | Prague             | 0.82       | 0.38 | Inf | -0.43   | 0.67    |
+
+*Table 1.* Odds ratio and its *p value* among different samples. The larger the odds ratio is, the weaker the framing effect. 
+
+### Conclusion
+Based on the results we got, we can conclude that in general, there are significant framing effects in our data. As we know, the more the odds ratio is different from 1, the stronger the framing effect is. Therefore, for the three samples, ConnecticutCollege shows the strongest framing effect among all, and Prague barely shows any framing effect. 
+
+As for the risk aversion analysis, although in general there are slightly fewer people choosing the risky option, participants in the data do not show significant risk aversion. Interestingly, people from the Malaysia sample even show a tendency of risk loving. 
+
+## Section 2 
+
+Loading the data and prepare the data for modelling. 
+```{r farmo, fig.height=4, fig.width=8, message=FALSE, warning=FALSE}
+fram <- read_csv("framing_replication.csv") %>%
+  mutate(sample = as.factor(sample), 
+         framing = factor(framing, 
+                          levels = c("gain", "loss"), 
+                          labels = c("Gain", "Loss")))
+str(fram)
+
+#Checking missing values
+Amelia::missmap(fram, col = c("black", "grey"), x.cex = 1, 
+                main = "Missing values vs observed") 
+```
+
+There are 8 missing values for the DV (risky_choice) in the data, I have decided to delete these missing values. 
+```{r farmn, message=FALSE, warning=FALSE}
+fram %>% 
+  filter(is.na(risky_choice) == TRUE)
+fram <- fram %>% 
+  filter(is.na(risky_choice) == FALSE)
+```
+
+Inspection of the dependent variable *risky_choice*: 
+```{r visualise3, fig.height=5, fig.width=7, fig.align='center', echo=TRUE, warning=FALSE}
+fram_f <- fram %>%
+  mutate(risky_choice = as.factor(risky_choice))
+
+g1 <- ggplot(fram_f, aes(risky_choice), position = "dodge") + 
+  geom_histogram(stat= "count", 
+                 bins = 30, 
+                 aes(fill = framing)) + 
+  theme(legend.position = "right") +
+  scale_fill_brewer(palette = "Greys")
+
+g2 <- ggplot(fram_f, aes(risky_choice), position = "dodge") + 
+  geom_histogram(stat= "count", 
+                 bins = 30, 
+                 aes(fill = framing)) +
+  facet_grid(~ sample) +
+  theme(legend.position = "right") +
+  scale_fill_brewer(palette = "Greys")
+
+plot_grid(g1, g2, nrow = 2)
+```
+
+* Slightly more people choose the safe option
+* There is framing effect, but not very obvious 
+* The ConnectcutCollege sample shows the strongest framing effect 
+* The Prague sample shows potential risk aversion, but no noticeable framing effect
+* The Malaysia sample shows the framing effect, no risk aversion
+
+Inspection of the age variable:
+```{r age, echo=TRUE, message=FALSE, warning=FALSE, fig.height=4}
+gg1 <- ggplot(fram, aes(x = age, stat(count))) +
+  geom_density(aes(group = sample, color = sample, fill = sample), alpha = 0.1)
+
+gg2 <- ggplot(fram, aes(x = age, stat(count))) +
+  geom_density(aes(group = framing, color = framing, fill = framing), alpha = 0.1)
+
+gg3 <- ggplot(fram_f, aes(x = age, stat(count))) +  
+  geom_density(aes(group = risky_choice, color = risky_choice, fill = risky_choice), 
+               alpha = 0.1)
+
+plot_grid(plot_grid(gg2, gg3), gg1, nrow = 2)
+```
+
+* Most participants are about 19 to 22 years old 
+* Prague has a broader age range
+* No interactions with other variables
+* No obvious relationship with the DV
+
+GLM model(1): with only *framing*  
+```{r glm1}
+fram_agg1 <- fram %>% 
+  group_by(session_id, framing) %>% 
+  summarise(risky_choice)
+
+glm1 <- glm(risky_choice ~ framing, fram_agg1, family = binomial("logit"))
+summary(glm1)
+
+Anova(glm1, type = 3)
+```
+```{r followup1}
+#Check model adequacy:
+#fram %>%
+#  group_by(framing) %>%
+#  summarise(obs = mean(risky_choice))
+#emmeans(glm1, "framing", type = "response", adjust = "holm")
+
+#The probs:
+em_p1 <- emmeans(glm1, "framing", type = "response", adjust = "holm") 
+em_p1 %>%
+  knitr::kable()
+#For odds ratio, the more it differs from 1, the better
+pairs(em_p1, adjust = "holm") %>%
+  knitr::kable()
+```
+
+* The prob of gain is 0.38: the probs of participants choosing the risky option under the gain frame is 0.38 (fewer people choosing the risky option under gain frame). In the gain frame, people are 0.6 more likely to choose the risky over safe option 
+* The prob of loss is 0.63: the probs of participants choosing the risky option under the loss frame is 0.63 (more people choosing the risky option under loss frame). In the loss frame, people are 1.7 more likely to choose the risky over safe option
+* Odds ratio is 0.35: the ratio of the likelihoods of people choosing the risky over the safe option under the gain and loss frame is significant (p.value <.0001) 
+* Significant framing effect 
+
+GLM model(2): with *framing* and *sample*
+```{r glm2}
+fram_agg2 <- fram %>% 
+  group_by(sample, session_id, framing) %>% 
+  summarise(risky_choice)
+
+glm2 <- glm(risky_choice ~ sample*framing, fram_agg2, family = binomial("logit"))
+summary(glm2)
+
+Anova(glm2, type = 3)
+```
+```{r followup2}
+#Check model adequacy:
+#fram %>%
+#  group_by(framing) %>%
+#  summarise(obs = mean(risky_choice))
+#emmeans(glm2, "framing", type = "response", adjust = "holm") 
+#fram %>%
+#  group_by(sample, framing) %>%
+#  summarise(obs = mean(risky_choice))
+#emmeans(glm2, "framing", by = "sample", type = "response", adjust = "holm") 
+
+#The probs:
+em_p2 <- emmeans(glm2, "framing", by = "sample", type = "response", adjust = "holm") 
+em_p2 %>%
+  knitr::kable()
+#plot(em_p2, comparisons = TRUE, adjust = "holm")
+contrast(emmeans(glm2, c("framing", "sample"), type = "response", adjust = "holm"), 
+         interaction = "pairwise") %>% 
+  as.tibble() %>%
+  knitr::kable()
+#For odds ratio, the more it differs from 1, the better
+pairs(em_p2, adjust = "holm") %>%
+  as.tibble() %>%
+  knitr::kable()
+```
+
+* Significant framing effect, weak significant effect across samples
+* No significant interaction effect
+* AIC of the GLM is smaller (360.78)
+* The prob of gain is 0.37; the prob of loss is 0.62
+* Odds ratio of gain/loss is 0.18 for ConnecticutCollege: the ratio of the likelihoods of people choosing the risky over the safe option under the gain and loss frame is significant (p.value <.001)
+* Odds ratio of gain/loss is 0.30 for Malaysia: the ratio of the likelihoods of people choosing the risky over the safe option under the gain and loss frame is significant (p.value <.01)
+* Odds ratio of gain/loss is 0.82 for Prague: the ratio of the likelihoods of people choosing the risky over the safe option under the gain and loss frame is not significant (p.value = 0.67)
+* The differences of gain and loss of ConnecticutCollege and Prague is significant
+
+Check if the two logit models are equivalent:
+```{r anova}
+anova(glm1, glm2, test = "Chisq")
+```
+
+* The difference between the two models is significant 
+* Better to use the second model with the *sample*
+
+Try-out which plot works best:
+```{r visualise1, message=FALSE, warning=FALSE, eval=FALSE}
+aov_glm1 <- aov_car(risky_choice ~ sample*framing + Error(session_id), 
+                    fram, family = binomial("logit"))
+
+af1 <- afex_plot(aov_glm1, "framing",
+                 trace = "framing", 
+                 legend_title = "Frame Types",
+                 mapping = c("shape"), 
+                 group = framing) +
+  geom_line(aes(group = 1)) +
+  xlab("Frame Types") + 
+  ylab("% Of choose risky option") +
+  theme_grey() +
+  theme(legend.position = "bottom") 
+
+af2 <- afex_plot(aov_glm1, "framing",
+                 trace = "sample",
+                 legend_title = "Sample Source",
+                 mapping = c("shape")) +
+  xlab("Frame Types") + 
+  ylab("% Of choose risky option") +
+  theme_grey() +
+  theme(legend.position = "bottom") 
+
+plot_grid(af1, af2, labels = "AUTO")
+
+#Because the samples are independent, the following graph is not good.
+#afex_plot(aov_glm1, "sample", 
+#          trace = "framing",
+#          mapping = c("shape")) +
+#  theme_grey() 
+```
+
+* Farming effect: ConnecticutColloege > Malaysia > Prague 
+
+**Optional: split the data based on different samples.**
+```{r split1}
+fram_s <- fram %>%
+  spread(sample, risky_choice)
+
+fram_s1 <- fram_s %>%
+  select(session_id:ConnecticutCollege) %>%
+  filter(is.na(ConnecticutCollege) == FALSE)
+fram_s2 <- fram_s %>%
+  select(session_id:age, Malaysia) %>%
+  filter(is.na(Malaysia) == FALSE)
+fram_s3 <- fram_s %>%
+  select(session_id:age, Prague) %>%
+  filter(is.na(Prague) == FALSE)
+
+#glm_s1 <- glm(ConnecticutCollege ~ framing, fram_s1, family = binomial("logit"))
+#glm_s2 <- glm(Malaysia ~ framing, fram_s2, family = binomial("logit"))
+#glm_s3 <- glm(Prague ~ framing, fram_s3, family = binomial("logit"))
+#summary(glm_s1)
+#summary(glm_s2)
+#summary(glm_s3)
+```
+
+* In the ConnecticutCollege model: coeff: -0.85, AIC: 113.7 
+* In the Malaysia model: coeff: -0.61, AC: 130.25
+* In the Prague model: no significant effect
+
+Test the second research question (risk aversion):
+```{r riskaversion}
+t.test(fram$risky_choice, alternative = "less", m = 0.5)
+t.test(fram_s1$ConnecticutCollege, alternative = "less", m = 0.5)
+t.test(fram_s2$Malaysia, alternative = "less", m = 0.5)
+t.test(fram_s3$Prague, alternative = "less", m = 0.5)
+
+#Alternative:
+#summary(glm(risky_choice ~ 1, fram, family = binomial("logit")))
+#fram %>%
+#  filter(sample == "ConnecticutCollege") %>%
+#  glm(risky_choice ~ 1, ., family = binomial("logit")) %>%
+#  summary()
+#fram %>%
+#  filter(sample == "Malaysia") %>%
+#  glm(risky_choice ~ 1, ., family = binomial("logit")) %>%
+#  summary()
+#fram %>%
+#  filter(sample == "Prague") %>%
+#  glm(risky_choice ~ 1, ., family = binomial("logit")) %>%
+#  summary()
+```
+
+* No significant risk aversion (average probability of choosing the risky option is not significantly below 50%)
+
+Test the residuals for the first model: 
+```{r residuals, echo=TRUE, message=FALSE, warning=FALSE, fig.height=4}
+simulationOutput1 <- simulateResiduals(fittedModel = glm1, n = 250)
+plot(simulationOutput1, asFactor = T)
+```
+
+Test the residuals for the second model: 
+```{r residualss, echo=TRUE, message=FALSE, warning=FALSE, fig.height=4}
+simulationOutput2 <- simulateResiduals(fittedModel = glm2, n = 250)
+plot(simulationOutput2, asFactor = T)
+```
+
+* The quantile plots and lines do not raise any significant concern with normality of the residuals 
+
+
+# Task 2: Helpfulness Of Product Reviews 
+
+## Section 1
+
+### Introduction 
+Online reviews play an important role in consumer decisions. One important research question is which features of online reviews customers perceive as helpful. This knowledge could be used to influence the order in which platforms present online reviews or which online reviews are used for marketing purposes. Before running the experiment, we have two hypotheses that both the disclosure of identity and review extremity is positively related to helpfulness.
+
+### Data description 
+The data we used in this paper is from a fictitious experiment in which participants were asked to rate the helpfulness of different product reviews. Each participant viewed online reviews for four different products. For each product, each participant saw six different reviews. Participants were asked to rate the helpfulness of each review on a scale ranging from 0 (not helpful at all) to 10 (extremely helpful). More specifically, there are 6 variables in the data: *participant*, *product_type* (two factors: search and experience), *extremity* (two factors: high and low), *disclosure* (two factors: anonymous, identified), *product* and *helpfulness* (scaled from 0 to 10). 
+
+### Model 
+Based on the structure of our data and variables, we use a linear mixed model with crossed random effects for participants and items. More specifically, we use *helpfulness* as the dependent variable, fixed effects for *extremity*, *disclosure* and *product_type*, as well as their interactions, and with crossed random effects for participants and items. Our initial model employed the maximal random effects structure justified by the design (Barr, Levy, Scheepers, & Tily, 2013): by participant random intercepts are *product_type*, *extremity* and their interaction, by product random intercepts are *extremity*, *disclosure* and their interaction. 
+
+As the model showed convergence warning and evidence for a singular fit, we reduced the random-effects structure until no problematic random-effects estimates were observed. We settled on a model with no correlations of the variables. To evaluate the significance of fixed-effects, we used likelihood-ratio tests using the methods implemented in the R package afex. 
+
+### Result
+By using and including fixed effects for all three variables including their interaction, we find significant results for the model. Moreover, we use the Kenward-Roger method for obtaining *p*-values. Specifically, the impacts of the variables *extremity* is significantly positive (*F*(1, 42.22) = 5.84, *p* = 0.02), the effect of *disclosure* is also significantly positive (*F*(1, 40.35) = 7.86, *p* = 0.01) and the interactions of the *product_type* with both the *extremity* and *disclosure* are also significant (*F*(1, 27.49) = 26.82, *p* < 0.01; *F*(1, 33.64) = 4.49, *p* = 0.04). For all of the follow-up analyses reported below, we restricted the overall probability of committing a Type 1 error to 0.05 using the Bonferroni-Holm method. 
+
+Firstly, the follow-up tests suggest that there are significant positive effects of the disclosure of identity (difference of factors = 0.69, *p* = 0.01) and review extremity (difference of factors = 0.62, *p* = 0.02) on helpfulness, displayed in Figure 2 (graph A and B). Moreover, if we divided the effects for different product types, we can see the *extremity* shows a significant positive relation with helpfulness for search products (difference of factors = 1.48, *p* < 0.01), while the *disclosure* has a significant positive relationship with helpfulness for experience products (difference of factors = 1.09, *p* < 0.01). As we can also see these effects from graphs C and D in Figure 2. On the other hand, we also found that differences of two product types between the low and high extremity of reviews are significant (*p* < 0.01). This also corresponds to the findings above. 
+
+Additionally, by performing a test for the residuals of the data, the quantile plot (also called a normal probability plot) does not raise any significant concern with the normality of the residuals. Therefore, the results we got from our model is, to some extent, reliable.   
+```{r secowbp, include=FALSE}
+help <- read_csv("helpfulness.csv") %>%
+  mutate(product_type = factor(product_type, 
+                               levels = c("experience", "search"), 
+                               labels = c("Experience", "Search")), 
+         extremity = factor(extremity, 
+                            levels = c("low", "high"), 
+                            labels = c("Low", "High")), 
+         disclosure = factor(disclosure, 
+                             levels = c("anonymous","identified"), 
+                             labels = c("Anonymous","Identified")))
+```
+```{r secowb, echo=FALSE, message=FALSE, warning=FALSE, fig.height=5}
+aov_re1 <- aov_car(helpfulness ~ disclosure*extremity*product_type +
+                     Error(participant/product_type*extremity), help)
+
+aff1 <- afex_plot(aov_re1, "disclosure", 
+                  trace = "disclosure", 
+                  mapping = c("shape"), legend_title = "Disclosure", 
+                  data_geom = ggpol::geom_boxjitter,
+                  data_arg = list(
+                    color = "darkgrey",
+                    width = 0.5, 
+                    jitter.width = 0.07,
+                    jitter.height = 0,
+                    outlier.intersect = TRUE),
+                  point_arg = list(size = 2.5), 
+                  error_arg = list(size = 1.5, width = 0), 
+                  error = "none") +
+  geom_line(aes(group = 1)) +
+  xlab("Disclosure") +
+  ylab("Helpfulness") +
+  theme_grey() +
+  theme(legend.position = "bottom") 
+
+aff2 <- afex_plot(aov_re1, "extremity", 
+                  trace = "extremity", legend_title = "Extremity", 
+                  mapping = c("shape"),
+                  data_geom = ggpol::geom_boxjitter,
+                  data_arg = list(
+                    color = "darkgrey",
+                    width = 0.5, 
+                    jitter.width = 0.07,
+                    jitter.height = 0,
+                    outlier.intersect = TRUE),
+                  point_arg = list(size = 2.5), 
+                  error_arg = list(size = 1.5, width = 0), 
+                  error = "none") +
+  geom_line(aes(group = 1)) +
+  xlab("Extremity") +
+  ylab("Helpfulness") +
+  theme_grey() +
+  theme(legend.position = "bottom") 
+
+aff3 <- afex_plot(aov_re1, "disclosure", 
+                  trace = "product_type", legend_title = "Product Types",
+                  mapping = c("shape"),
+                  data_geom = ggpol::geom_boxjitter,
+                  data_arg = list(
+                    color = "darkgrey",
+                    width = 0.5, 
+                    jitter.width = 0.07,
+                    jitter.height = 0,
+                    outlier.intersect = TRUE),
+                  point_arg = list(size = 2.5), 
+                  error_arg = list(size = 1.5, width = 0), 
+                  error = "none") +
+  xlab("Disclosure") +
+  ylab("Helpfulness") +
+  theme_grey() +
+  theme(legend.position = "bottom") 
+
+aff4 <- afex_plot(aov_re1, "extremity", 
+                  trace = "product_type", legend_title = "Product Types",
+                  mapping = c("shape"),
+                  data_geom = ggpol::geom_boxjitter,
+                  data_arg = list(
+                    color = "darkgrey",
+                    width = 0.5, 
+                    jitter.width = 0.07,
+                    jitter.height = 0,
+                    outlier.intersect = TRUE),
+                  point_arg = list(size = 2.5), 
+                  error_arg = list(size = 1.5, width = 0), 
+                  error = "none") +
+  xlab("Extremity") +
+  ylab("Helpfulness") +
+  theme_grey() +
+  theme(legend.position = "bottom")
+
+plot_grid(aff1, aff2, aff3, aff4, labels = "AUTO", nrow = 2)
+```
+
+*Figure 2.* The impacts of disclosure of identity and review extremity on the helpfulness of the reviews (graph A and B) and these two effects on the helpfulness for the different type of products (graph C and D). Raw data is shown in the background and offset on the x-axis in case of overlap.
+
+### Conclusion
+From the results, we can conclude that in general, there are positive relationships between helpfulness and either disclosure of identity or review extremity. Specifically, more extreme ratings or identified reviews offer more information for consumers. The impact of different product types on the helpfulness is based on the interactions with the disclosure of identity and review extremity.  
+
+However, if we consider different product types separately, the effects of disclosure of identity and review extremity are different. For experience products (such as alcoholic beverages, DVDs, and toys), because it is comparatively more difficult to find information on product quality, a more identified review is more helpful for people to find the potential problem they might have with the product. For search products (such as wireless devices, home appliances, and cameras), because consumers can relatively easily acquire information on product quality, a more extreme review can provide more extra information for people to make a decision. 
+
+## Section 2 
+
+```{r help, message=FALSE, warning=FALSE}
+help <- read_csv("helpfulness.csv") %>%
+  mutate(product_type = factor(product_type, 
+                               levels = c("experience", "search"), 
+                               labels = c("Experience", "Search")), 
+         extremity = factor(extremity, 
+                            levels = c("low", "high"), 
+                            labels = c("Low", "High")), 
+         disclosure = factor(disclosure, 
+                             levels = c("anonymous","identified"), 
+                             labels = c("Anonymous","Identified")))
+str(help)
+```
+
+Inspection of dependent variable:
+```{r helpd, fig.align="center", fig.height=3, fig.width=4}
+ggplot(help, aes(helpfulness)) +
+  geom_histogram(aes(y = ..density..), binwidth = 1) +
+  geom_vline(xintercept = mean(help$helpfulness), size = 2) 
+
+summary(help$helpfulness)
+```
+
+RE mixed model: 
+```{r re1}
+re1 <- mixed(helpfulness ~ product_type*extremity*disclosure + 
+               (product_type*extremity | participant) + 
+               (extremity*disclosure | product), help, method = "S")
+summary(re1) 
+```
+
+There is a singular fit problem in the model. Therefore we modify the model: 
+```{r re2}
+re2 <- mixed(helpfulness ~ product_type*extremity*disclosure + 
+               (product_type*extremity || participant) + 
+               (extremity*disclosure || product), help, 
+             expand_re = TRUE, progress = FALSE, method = "KR")
+summary(re2) #Shows no singular fit
+
+nice(re2) %>% 
+  as.tibble() %>%
+  arrange(- desc(`p.value`)) %>%
+  knitr::kable()
+```
+```{r refollowup, echo=TRUE, message=FALSE, warning=FALSE}
+emm_options(lmer.df = "Kenward-Roger")
+# or "Satterthwaite" or "asymptotic" 
+
+#With no interactions involve: 
+#product_type does not give significant main effects, 
+#so here we don't need to consider it. 
+em_r1 <- emmeans(re2, "extremity", adjust = "holm") 
+em_r1 %>% 
+  as.tibble() %>%
+  knitr::kable()
+em_r2 <- emmeans(re2, "disclosure", adjust = "holm") 
+em_r2 %>% 
+  as.tibble() %>%
+  knitr::kable()
+contrast(em_r1, interaction = "pairwise") %>%
+  as.tibble() %>%
+  arrange(desc(- `p.value`)) %>%
+  knitr::kable()
+contrast(em_r2, interaction = "pairwise") %>%
+  as.tibble() %>%
+  arrange(desc(- `p.value`)) %>%
+  knitr::kable()
+
+#With the interactions with product types:
+em_r3 <- emmeans(re2, "extremity", by = "product_type", adjust = "holm") 
+em_r3 
+em_r4 <- emmeans(re2, "disclosure", by = "product_type", adjust = "holm") 
+em_r4
+contrast(em_r3, interaction = "pairwise") %>%
+  as.tibble() %>%
+  arrange(desc(- `p.value`)) %>%
+  knitr::kable()
+contrast(em_r4, interaction = "pairwise") %>%
+  as.tibble() %>%
+  arrange(desc(- `p.value`)) %>%
+  knitr::kable()
+
+#Another way of looking at the interactions: 
+contrast(emmeans(re2, "product_type", by = "extremity", adjust = "holm"), 
+         interaction = "pairwise") %>% 
+  as.tibble() %>%
+  arrange(desc(- `p.value`)) %>%
+  knitr::kable()
+contrast(emmeans(re2, "product_type", by = "disclosure", adjust = "holm"), 
+         interaction = "pairwise") %>%
+  as.tibble() %>%
+  arrange(desc(- `p.value`)) %>%
+  knitr::kable()
+```
+
+* Significant effects: *extremity* (positive), *disclosure* (positive), interaction effects of *product_type* and *extremity*/*disclosure* 
+* Singular fit problem => modify the model
+* For experience product: positive effect of *disclosure* on helpfulness is significant (from anonymous to identfied), negative effect of *extremity* on helpfulness is not significant (low to high)
+* For search product: positive effect of *disclosure* on helpfulness is not significant, positive effect of *extremity* on helpfulness is significant
+
+Test the residuals for the data: 
+```{r resid, echo=TRUE, message=FALSE, warning=FALSE, fig.height=3, fig.width=4, fig.align="center"}
+help$residuals <- residuals(re1$full_model)
+
+ggplot(help, aes(sample = residuals)) +
+  stat_qq() +
+  stat_qq_line()
+```
+
+* The quantile plot (also called a normal probability plot) does not raise any significant concern with normality of the residuals 
+
+Plots: 
+```{r plot1, message=FALSE, warning=FALSE, eval=FALSE}
+aov_re1 <- aov_car(helpfulness ~ disclosure*extremity*product_type +
+                     Error(participant/product_type*extremity), help)
+
+aff1 <- afex_plot(aov_re1, "disclosure", 
+                  trace = "disclosure", 
+                  mapping = c("shape"), legend_title = "Disclosure", 
+                  data_geom = ggpol::geom_boxjitter,
+                  data_arg = list(
+                    color = "darkgrey",
+                    width = 0.5, 
+                    jitter.width = 0.07,
+                    jitter.height = 0,
+                    outlier.intersect = TRUE),
+                  point_arg = list(size = 2.5), 
+                  error_arg = list(size = 1.5, width = 0), 
+                  error = "none") +
+  geom_line(aes(group = 1)) +
+  xlab("Disclosure") +
+  ylab("Helpfulness") +
+  theme_grey() +
+  theme(legend.position = "bottom") 
+
+aff2 <- afex_plot(aov_re1, "extremity", 
+                  trace = "extremity", legend_title = "Extremity", 
+                  mapping = c("shape"),
+                  data_geom = ggpol::geom_boxjitter,
+                  data_arg = list(
+                    color = "darkgrey",
+                    width = 0.5, 
+                    jitter.width = 0.07,
+                    jitter.height = 0,
+                    outlier.intersect = TRUE),
+                  point_arg = list(size = 2.5), 
+                  error_arg = list(size = 1.5, width = 0), 
+                  error = "none") +
+  geom_line(aes(group = 1)) +
+  xlab("Extremity") +
+  ylab("Helpfulness") +
+  theme_grey() +
+  theme(legend.position = "bottom") 
+
+aff3 <- afex_plot(aov_re1, "disclosure", 
+                  trace = "product_type", legend_title = "Product Types",
+                  mapping = c("shape"),
+                  data_geom = ggpol::geom_boxjitter,
+                  data_arg = list(
+                    color = "darkgrey",
+                    width = 0.5, 
+                    jitter.width = 0.07,
+                    jitter.height = 0,
+                    outlier.intersect = TRUE),
+                  point_arg = list(size = 2.5), 
+                  error_arg = list(size = 1.5, width = 0), 
+                  error = "none") +
+  xlab("Disclosure") +
+  ylab("Helpfulness") +
+  theme_grey() +
+  theme(legend.position = "bottom") 
+
+aff4 <- afex_plot(aov_re1, "extremity", 
+                  trace = "product_type", legend_title = "Product Types",
+                  mapping = c("shape"),
+                  data_geom = ggpol::geom_boxjitter,
+                  data_arg = list(
+                    color = "darkgrey",
+                    width = 0.5, 
+                    jitter.width = 0.07,
+                    jitter.height = 0,
+                    outlier.intersect = TRUE),
+                  point_arg = list(size = 2.5), 
+                  error_arg = list(size = 1.5, width = 0), 
+                  error = "none") +
+  xlab("Extremity") +
+  ylab("Helpfulness") +
+  theme_grey() +
+  theme(legend.position = "bottom")
+
+plot_grid(aff1, aff2, aff3, aff4, labels = "AUTO", nrow = 2)
+
+#We can also present the interactions in another way: 
+afex_plot(aov_re1, "product_type", 
+          trace = "extremity", 
+          mapping = c("shape"),
+          data_geom = ggpol::geom_boxjitter,
+          data_arg = list(
+            color = "darkgrey",
+            width = 0.5, 
+            jitter.width = 0.07,
+            jitter.height = 0,
+            outlier.intersect = TRUE),
+          point_arg = list(size = 2.5), 
+          error_arg = list(size = 1.5, width = 0), 
+          error = "none") +
+  theme_grey() +
+  theme(legend.position = "bottom") 
+
+afex_plot(aov_re1, "product_type", 
+          trace = "disclosure", 
+          mapping = c("shape"),
+          data_geom = ggpol::geom_boxjitter,
+          data_arg = list(
+            color = "darkgrey",
+            width = 0.5, 
+            jitter.width = 0.07,
+            jitter.height = 0,
+            outlier.intersect = TRUE),
+          point_arg = list(size = 2.5), 
+          error_arg = list(size = 1.5, width = 0), 
+          error = "none") +
+  theme_grey() +
+  theme(legend.position = "bottom") 
+
+#The interaction between disclosure and extremity is not significant
+#afex_plot(aov_re1, "disclosure", 
+#          trace = "extremity", 
+#          mapping = c("shape"),
+#          error = "none") +
+#  theme_grey() 
+```
+
+* Disclosure of identity is positively related to helpfulness for experience products
+* Review extremity is positively related to helpfulness for search products
+
+**Optional: Split the data based on different product types.**
+```{r split2}
+#help_ex <- help %>%
+#  filter(product_type == "Experience")
+#
+#help_se <- help %>%
+#  filter(product_type == "Search")
+#
+#re_ex <- mixed(helpfulness ~ extremity*disclosure + 
+#                 (extremity | participant) + 
+#                 (extremity*disclosure | product), help, method = "S")
+#summary(re_ex)
+#
+#nice(re_ex) %>% 
+#  as.tibble() %>%
+#  arrange(- desc(`p.value`)) %>%
+#  knitr::kable()
+#
+#aov_re_ex <- aov_4(helpfulness ~ extremity*disclosure + 
+#                     (extremity | participant), help_ex)
+#aov_re_ex
+#
+#re_se <- mixed(helpfulness ~ extremity*disclosure + 
+#                 (extremity | participant) + 
+#                 (extremity*disclosure | product), help, method = "S")
+#summary(re_se)
+#
+#nice(re_se) %>% 
+#  as.tibble() %>%
+#  arrange(- desc(`p.value`)) %>%
+#  knitr::kable()
+#
+#aov_re_se <- aov_4(helpfulness ~ extremity*disclosure + 
+#                     (extremity | participant), help_se)
+#aov_re_se
+```

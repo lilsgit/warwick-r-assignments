@@ -1,0 +1,477 @@
+---
+title: "Assessment 2"
+author: 'Student ID: 1860529'
+date: "23/11/2018"
+output: 
+  pdf_document
+mainfont: Times New Roman
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Preparation 
+
+```{r packages, message=FALSE, warning=FALSE}
+library("tidyverse")
+library("afex")
+library("emmeans")
+library("cowplot")
+library("car")
+library("stargazer") #Use this for the tables in the appendix. 
+
+theme_set(theme_bw(base_size = 15) + 
+            theme(legend.position="bottom", 
+                  panel.grid.major.x = element_blank(),
+                  panel.grid.minor.x = element_blank()))
+
+afex::set_sum_contrasts()
+```
+
+## Task 1: Absolute rank or relative rank?
+
+### Section 1
+
+Is the absolute or the relative rank of the product a better predictor of individuals’ preferences? Figure 1 shows the effect of the rank types and rank levels on peoples’ willingness-to-pay. Figure 1 graph B shows that the potential effect of relative rank on the willingness-to-pay is stronger than absolute rank. Graph C of Figure 1 suggests that with the absolute rank type, general people and economists show different trends of preferences towards low, medium and high rank products. There is a positive relationship between willingness-to-pay and rank for economists, but no effect of rank on general people's willingness-to-pay. While on the other hand, with the relative rank type, general people and economists have similar preferences. Under the relative rank type, there is a positive relationship between the willingness-to-pay and rank for both general people and economists. 
+
+Furthermore, I analysed the effects of rank type on the willingness-to-pay (absolute versus relative) using ANOVA methods. The difference in types of rank (difference = 0.39, SE = 0.78, 0.70 and 0.67 for regressions with only type, with type and rank and with all three variables) is not significant, F(1, 238) = 0.25 for the regression with type as the independent variable, F(1, 234) = 0.31 for the regression with type and rank as independent variables, F(1, 228) = 0.34 for the model with all three variables as independent variables, p > .1 for all. Additionally, I analysed individuals' preferences based on absolute and relative rank separately. In the absolute model, not only is the main effect of rank and population significant (F(2, 114) = 11.91, p < .0001; F(1, 114) = 5.16, p < .05), the interaction between these two variables is also significant (F(2, 114) = 8.98, p < .0001). In the relative model, only the main effect of rank is significant (F(2, 114) = 24.70, p < .0001). 
+
+In general, based on the data, there is no statistical difference between absolute and relative rank. If we use the absolute rank to predict people’s preferences, we need to consider the differences in the effect among different groups of people. If we use relative rank instead, we need to consider that it does not give information about the absolute value of the product.
+
+```{r sonegp, include=FALSE}
+wtp <- read_csv("wtp_factorial.csv") %>%
+  as.tibble() %>%
+  mutate(population = factor(population, c("general", "economists"), c("general", "economists")),
+         rank = factor(rank, c("low", "medium", "high"), c("low", "medium", "high")), 
+         type = factor(type, c("relative", "absolute"), c("relative", "absolute")))
+a1 <- aov_car(wtp ~ type + Error(id), wtp)
+a2 <- aov_car(wtp ~ type * rank + Error(id), wtp)
+a <- aov_car(wtp ~ type * rank * population + Error(id), wtp)
+```
+```{r soneg, echo=FALSE, message=FALSE, warning=FALSE, fig.height=8}
+af1 <- afex_plot(a1, x = "type",
+                 mapping = list("fill"),
+                 data_geom= ggpol::geom_boxjitter,
+                 data_arg= list(width = 0.7, 
+                                jitter.width = 0.12, 
+                                jitter.color = "darkgrey",
+                                outlier.color = "darkgrey",
+                                outlier.intersect = TRUE)) +
+  labs(x = "Type", y = "WTP") +
+  scale_fill_brewer(palette = "Greys") 
+af2 <- afex_plot(a2, x = "rank", trace = "type", 
+                 legend_title = "Type",
+                 mapping = list("fill"),
+                 data_geom= ggpol::geom_boxjitter,
+                 data_arg= list(width = 0.7, 
+                                jitter.width = 0.12, 
+                                jitter.color = "darkgrey",
+                                outlier.color = "darkgrey",
+                                outlier.intersect = TRUE)) +
+  labs(x = "Ranks", y = "WTP") +
+  scale_fill_brewer(palette = "Greys") 
+af <- afex_plot(a, x = "rank", trace = "type", 
+                legend_title = "Type",
+                panel = "population",
+                mapping = list("fill"),
+                data_geom= ggpol::geom_boxjitter,
+                data_arg= list(width = 0.7, 
+                               jitter.width = 0.12, 
+                               jitter.color = "darkgrey",
+                               outlier.color = "darkgrey",
+                               outlier.intersect = TRUE)) +
+  facet_wrap(~ population) +
+  labs(x = "Ranks", y = "WTP") +
+  scale_fill_brewer(palette = "Greys") 
+plot_grid(plot_grid(af1, af2, labels = "AUTO"), af, nrow = 2, labels = c(" ", "C"))
+```
+
+*Figure 1.* Graph A shows the mean and distribution of people's willingness-to-pay based on different rank types. Graph B shows the effect of types and ranks on the willingness-to-pay. Graph C divides the population into two groups: general and economists. The dots and each boxplot show the distribution and the mean of the willingness-to-pay for different rank levels, and the traces in graph B and C show the effects of absolute and relative rank types on the willingness-to-pay.
+
+### Section 2
+
+Loading the data and convert the variables into factors. 
+```{r wtp, message=FALSE, warning=FALSE}
+wtp <- read_csv("wtp_factorial.csv") %>%
+  as.tibble() %>%
+  mutate(population = factor(population, c("general", "economists"), c("general", "economists")),
+         rank = factor(rank, c("low", "medium", "high"), c("low", "medium", "high")), 
+         type = factor(type, c("relative", "absolute"), c("relative", "absolute"))) 
+```
+```{r wtpc}
+str(wtp)
+```
+
+I test the effect of types of rank on the willingness-to-pay and furthermore, I add rank levels into the regression. 
+```{r alls, warning=FALSE}
+fit_wtp1 <- lm(wtp ~ type, wtp)
+summary(fit_wtp1)
+
+a1 <- aov_car(wtp ~ type + Error(id), wtp)
+summary(a1)
+
+e1 <- emmeans(fit_wtp1, "type")
+e1 %>% 
+  as.tibble() %>%
+  arrange(desc(emmean)) %>%
+  knitr::kable()
+
+update(pairs(e1), by = NULL, adjust = "holm") %>% 
+  as.tibble() %>%
+  knitr::kable()
+
+fit_wtp2 <- lm(wtp ~ type * rank, wtp)
+summary(fit_wtp2)
+
+a2 <- aov_car(wtp ~ type * rank + Error(id), wtp)
+summary(a2)
+
+e2 <- emmeans(fit_wtp2, c("type", "rank"))
+e2 %>% 
+  as.tibble() %>%
+  arrange(desc(emmean)) %>%
+  knitr::kable()
+
+int2 <- list(
+  rl_al = c(1, -1, 0, 0, 0, 0),
+  rm_am = c(0, 0, 1, -1, 0, 0),
+  rh_ah = c(0, 0, 0, 0, 1, -1),
+  r_a = c(1/3, -1/3, 1/3, -1/3, 1/3, -1/3))
+update(contrast(e2, int2), by = NULL, adjust = "holm") %>% 
+  as.tibble() %>%
+  arrange(desc(- contrast)) %>%
+  knitr::kable()
+```
+
+From the results we can see that there is no significant differences between absolute and relative ranks. Therefore I include the population variable in the model. 
+```{r all, warning=FALSE}
+fit_wtp <- lm(wtp ~ type * rank * population, wtp)
+summary(fit_wtp)
+
+a <- aov_car(wtp ~ type * rank * population + Error(id), wtp)
+summary(a)
+
+e <- emmeans(fit_wtp, c("type", "rank", "population"))
+e %>% 
+  as.tibble() %>%
+  arrange(desc(emmean)) %>%
+  knitr::kable()
+
+int <- list (
+  grl_al = c(1, -1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0),
+  grm_am = c(0, 0, 1, -1, 0, 0, 0, 0, 0, 0, 0, 0),
+  grh_ah = c(0, 0, 1, -1, 0, 0, 0, 0, 0, 0, 0, 0),
+  erl_al = c(0, 0, 0, 0, 0, 0, 1, -1, 0, 0, 0, 0),
+  erm_am = c(0, 0, 0, 0, 0, 0, 0, 0, 1, -1, 0, 0),
+  erh_ah = c(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, -1),
+  gr_a = c(1/3, -1/3, 1/3, -1/3, 1/3, -1/3, 0, 0, 0, 0, 0, 0),
+  er_a = c(0, 0, 0, 0, 0, 0, 1/3, -1/3, 1/3, -1/3, 1/3, -1/3),
+  r_a = c(1/6, -1/6, 1/6, -1/6, 1/6, -1/6, 1/6, -1/6, 1/6, -1/6, 1/6, -1/6))
+update(contrast(e, int), by = NULL, adjust = "holm") %>% 
+  as.tibble() %>%
+  arrange(desc(- contrast)) %>%
+  knitr::kable()
+```
+
+From the result of the test, there is no significant differences between the effects of absolute and relative rank. 
+
+```{r afexps, eval=FALSE}
+af1 <- afex_plot(a1, x = "type",
+                 mapping = list("fill"),
+                 data_geom= ggpol::geom_boxjitter,
+                 data_arg= list(width = 0.7, 
+                                jitter.width = 0.12, 
+                                jitter.color = "darkgrey",
+                                outlier.color = "darkgrey",
+                                outlier.intersect = TRUE)) +
+  labs(x = "Type", y = "WTP") +
+  scale_fill_brewer(palette = "Greys") 
+
+af2 <- afex_plot(a2, x = "rank", trace = "type", 
+                 legend_title = "Type",
+                 mapping = list("fill"),
+                 data_geom= ggpol::geom_boxjitter,
+                 data_arg= list(width = 0.7, 
+                                jitter.width = 0.12, 
+                                jitter.color = "darkgrey",
+                                outlier.color = "darkgrey",
+                                outlier.intersect = TRUE)) +
+  labs(x = "Ranks", y = "WTP") +
+  scale_fill_brewer(palette = "Greys") 
+
+af <- afex_plot(a, x = "rank", trace = "type", 
+                legend_title = "Type",
+                panel = "population",
+                mapping = list("fill"),
+                data_geom= ggpol::geom_boxjitter,
+                data_arg= list(width = 0.7, 
+                               jitter.width = 0.12, 
+                               jitter.color = "darkgrey",
+                               outlier.color = "darkgrey",
+                               outlier.intersect = TRUE)) +
+  facet_wrap(~ population) +
+  labs(x = "Ranks", y = "WTP") +
+  scale_fill_brewer(palette = "Greys") 
+
+plot_grid(plot_grid(af1, af2, labels = "AUTO"), af, nrow = 2, labels = c(" ", "C"))
+```
+
+Additionally, I separate the data into two datasets, one with the willingness-to-pay based on the absolute rank, the other one with the willingness-to-pay based on the relative rank.    
+```{r se, message=FALSE, warning=FALSE}
+wtp_s <- wtp %>%
+  spread(type, wtp)
+
+wtp_ab <- wtp_s %>% 
+  select(id:rank, absolute) %>%
+  filter(is.na(absolute) == FALSE)
+wtp_re <- wtp_s %>%
+  select(id:rank, relative) %>%
+  filter(is.na(relative) == FALSE)
+```
+
+Using ANOVA method to analyse both the model of absolute ranking and relative ranking. 
+```{r lm}
+fit_ab <- lm(absolute ~ population * rank, wtp_ab)
+summary(fit_ab)
+fit_re <- lm(relative ~ population * rank, wtp_re)
+summary(fit_re)
+
+a_ab <- aov_ez("id", "absolute", wtp_ab, between = c("population", "rank"))
+summary(a_ab)
+a_re <- aov_ez("id", "relative", wtp_re, between = c("population", "rank"))
+summary(a_re)
+```
+From the r-squareds of models, the relative rank model shows more explanatory power of the dependent variable. From the ANOVA test we can see that on the basis of absolute rank, the variables in this model show more significant p-values than the ones in the relative rank model. 
+
+Use emmeans method to further see the fittings of each cell in two models. 
+```{r emmeans}
+e_ab <- emmeans(fit_ab, c("population", "rank"))
+e_ab %>% 
+  as.tibble() %>%
+  arrange(desc(emmean)) %>%
+  knitr::kable()
+update(pairs(e_ab), by = NULL, adjust = "holm") %>%
+  as.tibble() %>%
+  filter(`p.value` <= 0.05) %>%
+  arrange(desc(- `p.value`)) %>%
+  knitr::kable()
+
+e_re <- emmeans(fit_re, c("population", "rank"))
+e_re %>% 
+  as.tibble() %>%
+  arrange(desc(emmean)) %>%
+  knitr::kable()
+update(pairs(e_re), by = NULL, adjust = "holm") %>%
+  as.tibble() %>%
+  filter(`p.value` <= 0.05) %>%
+  arrange(desc(- `p.value`)) %>%
+  knitr::kable()
+```
+
+Finally, we can also test the normality of the two models. 
+```{r graph, echo=TRUE, warning=FALSE}
+pp_ab <- ggplot(wtp_ab, aes(absolute)) +
+  geom_histogram(aes(y = ..density..), binwidth = 1) + 
+  stat_function(fun = dnorm, 
+                args = list(mean = mean(wtp_ab$absolute), sd = sd(wtp_ab$absolute)), 
+                size = 2, color = "blue") + 
+  xlab("Absolute rank") +
+  xlim(0, 40) + 
+  ylim(0, 0.1)
+
+pp_re <- ggplot(wtp_re, aes(relative)) +
+  geom_histogram(aes(y = ..density..), binwidth = 1) + 
+  stat_function(fun = dnorm, 
+                args = list(mean = mean(wtp_re$relative), sd = sd(wtp_re$relative)), 
+                size = 2, color = "blue") +
+  xlab("Relative rank") +
+  xlim(0, 40) +
+  ylim(0, 0.1)
+
+wtp_ab$residuals <- residuals(a_ab$lm)
+r_ab <- ggplot(wtp_ab, aes(sample = residuals)) +
+  stat_qq() + 
+  stat_qq_line() +
+  xlab("Residuals of absolute rank")  +
+  ylim(-15, 15)
+
+wtp_re$residuals <- residuals(a_re$lm)
+r_re <- ggplot(wtp_re, aes(sample = residuals)) +
+  stat_qq() + 
+  stat_qq_line() + 
+  xlab("Residuals of relative rank") +
+  ylim(-15, 15)
+
+plot_grid(pp_ab, pp_re, r_ab, r_re)
+```
+
+The density of absolute rank potentially is more close to normal distribution, while the trace of the residuals of relative rank seems to have a more normal distributional trend. 
+
+
+## Task 2: Weather and subjective well-being
+
+### Section 1
+
+Our research topic is the relationship between subjective well-being and weather (daily sun hours). I use a study in which a random sample of 60 individuals was asked to report their subjective well-being at the end of each of 45 consecutive days. Subjective well-being was a composite score constructed from four individual items. Participants had to rate how “happy”, “joyful”, “sad”, and “angry” they felt on a scale from 0 to 10, and the last two items were reverse coded for the composite score. Besides, the data also contains the daily sun hours at the location the participant was during each day. Therefore, I use both no-pooling and complete-pooling approaches to find if there is a relationship between the daily sun hours and subjective well-being. 
+
+Under the complete-pooling approach, the relationship between people’s subjective well-being and the weather shows in Figure 2. Figure 2 shows that there is no clear relationship between people’s subjective well-being and the weather. Linear regression and the natural logarithm function do not provide good fits to the data, R-squared is equal to 0.0001134 and 0.0001693. Also, in the linear regression, the variable of daily sun hours is not significant (t(2698) = -0.55, p > .1). There is no significant result from the natural logarithm function (t(2698) = 0.68, p > .1) as well.
+
+However, the no-pooling approach shows a different result. From Figure 3 we can see that the mean of each individuals' estimates is non-zero. In the model, the mean estimate shows significant value of 0.38 (t(59) = 7.82, p < .0001). Thus, the daily sun hours (weather) has a positive effect on people’s subjective well-being. Every one more hour of sun approximately increases people’s subjective well-being by 38% (need to take into account the emotions of “sad” and “angry” were coded reversely).  
+
+In conclusion, no-pooling and complete-pooling approaches give different results to the research question. The type of data we use is a time series data. However, the complete-pooling method ignores the individual differences regarding subjective well-being across time. Therefore it can easily lead to an unreliable result. In this case, by using the no-pooling method, I take into account the individual differences, which gives us a more reliable outcome.
+
+```{r secowbp, include=FALSE}
+wb <- read_csv("weather_wb.csv")
+wb_log <- wb %>%
+  mutate(eswb = exp(swb))
+```
+```{r secowb, echo=FALSE, fig.height=3}
+ylim <- c(0, 10)
+xlim <- c(-2, 12)
+g1 <- ggplot(wb, aes(x = sunh, y = swb)) +
+  geom_point(alpha = 0.5) +
+  scale_size_area() +
+  scale_colour_brewer(palette = "Set1") +
+  geom_smooth(method = "lm") +
+  labs(x = "Sun hours", y = "Well-being") +
+  coord_cartesian(ylim = ylim, xlim = xlim)
+g2 <- ggplot(wb_log, aes(x = sunh, y = eswb)) +
+  geom_point(alpha = 0.5) +
+  scale_size_area() +
+  scale_colour_brewer(palette = "Set1") +
+  geom_smooth(method = 'lm') +
+  labs(x = "Ln(sun hours)", y = "Well-being") 
+plot_grid(g1, g2, ncol = 2, labels = "AUTO")
+```
+
+*Figure 2.* The graphs present the fits of the linear regression, natural logarithm function. The fitted lines predict the relationship between subjective well-being and daily sun hours, under complete-pooling approach. The fitting lines in graph A and B do not show a clear linear or natural logarithm relationship between people's subjective well-being and weather. 
+
+```{r secobwt, echo=FALSE, fig.height=3.5, fig.width=4, fig.align="center"}
+wb_no <- wb %>%
+  mutate(sunhour = as.numeric(sunh)) %>%
+  group_by(id) %>%
+  do(broom::tidy(lm(swb ~ sunhour, .))) %>%
+  filter(term == "sunhour")
+ggplot(wb_no, aes(estimate)) +
+  geom_histogram(aes(y = ..density..), bins = 15) +
+  stat_function(fun = dnorm, 
+                args = list(mean = mean(wb_no$estimate), sd = sd(wb_no$estimate)), 
+                size = 2, color = "grey") +
+  geom_vline(xintercept = mean(wb_no$estimate), size = 2) +
+  xlab("Estimates") +
+  ylab("Distribution")
+```
+
+*Figure 3.* Distribution and mean of the estimates for each individual in the no-pooling approach. The grey line provides the normal distribution based on the sample size. The mean of the estimates is 0.38.    
+
+### Section 2
+
+```{r wb, message=FALSE, warning=FALSE}
+wb <- read_csv("weather_wb.csv") 
+str(wb)
+```
+
+Firstly, by using complete pooling method, I create a linear regression to analyse the data. 
+```{r swb, message=FALSE, warning=FALSE}
+fit_wbc <-lm(swb ~ sunh, wb)
+summary(fit_wbc)
+
+a_wbc <- car::Anova(fit_wbc, type = 3)
+a_wbc
+
+e_wbc <- emmeans(fit_wbc, "sunh")
+e_wbc %>% 
+  as.tibble() %>%
+  knitr::kable()
+```
+
+The results show that daily sun hours (weather) doesn't have significant effects on people's subjective well-being. However, we can see that in the emmeans test, the degrees of freedom seems to be too large, while the standard error is likely too small. 
+
+```{r wbcp, eval=FALSE}
+ylim <- c(0, 10)
+xlim <- c(-2, 12)
+ggplot(wb, aes(x = sunh, y = swb)) +
+  geom_point(alpha = 0.5) +
+  scale_size_area() +
+  scale_colour_brewer(palette = "Set1") +
+  geom_smooth(method = "lm") +
+  labs(x = "Sun hours", y = "Well-being") +
+  coord_cartesian(ylim = ylim, xlim = xlim) 
+```
+
+Moreover, the logarithm function seems to fit the relationship between subjective well-being and daily sun hours (people will be more used to the sunny weather after a certain amount of sun hours. Therefore the increase of people's subjective well-being will reduce after the first few hours of sun). So here I use the formula: swb = ln(sunh) through the complete-pooling method to analyse the relationship.
+```{r log, message=FALSE, warning=FALSE}
+wb_log <- wb %>%
+  mutate(eswb = exp(swb))
+
+fit_wbc_l <- lm(eswb ~ sunh, wb_log)
+summary(fit_wbc_l)
+
+car::Anova(fit_wbc_l, type = 3)
+```
+
+```{r wbcpn, eval=FALSE}
+ggplot(wb_log, aes(x = sunh, y = eswb)) +
+  geom_point(alpha = 0.5) +
+  scale_size_area() +
+  scale_colour_brewer(palette = "Set1") +
+  geom_smooth(method = 'lm') +
+  labs(x = "Ln(sun hours)", y = "Well-being")  
+```
+
+**Update: the dates are collected from different period of times, so this method is not feasible anymore.** *Additionally, I tried to partially control the data by using the average subjective well-being and average daily sun hours of each particular day (out of the 45 days) for all the participants. The result shows that by considering the differences in different dates, the daily sun hours (weather) has a significant effect on people's subjective well-being.*
+```{r date, warning=FALSE}
+wb_date <- wb 
+wb_date$date <- 1:45
+wb_date <- wb_date %>%
+  group_by(date) %>%
+  summarise(sunh_d = mean(sunh),
+            swb_d = mean(swb))
+
+fit_wbc_d <- lm(swb_d ~ sunh_d, wb_date)
+summary(fit_wbc_d)
+```
+
+Next, I use no-pooling method to consider the individual differences in the model. 
+```{r nopl}
+wb_no <- wb %>%
+  mutate(sunhour = as.numeric(sunh)) %>%
+  group_by(id) %>%
+  do(broom::tidy(lm(swb ~ sunhour, .))) %>%
+  filter(term == "sunhour")
+
+fit_wbno <- lm(estimate ~ 1, wb_no)
+summary(fit_wbno)
+```
+Here we have one liner slope of sunh per participant, I tested if the mean of slopes differs from 0. Result shows significant non-zero mean of slopes.  
+
+```{r wbgr, eval=FALSE}
+ggplot(wb_no, aes(estimate)) +
+  geom_histogram(aes(y = ..density..), bins = 15) +
+  stat_function(fun = dnorm, 
+                args = list(mean = mean(wb_no$estimate), sd = sd(wb_no$estimate)), 
+                size = 2, color = "grey") +
+  geom_vline(xintercept = mean(wb_no$estimate), size = 2) +
+  xlab("Estimates") +
+  ylab("Distribution")
+```
+
+## Appendix
+
+```{r mylatextable, echo=FALSE, results="asis"}
+stargazer(fit_wtp, fit_ab, fit_re, 
+          type = 'latex', 
+          title = "Regression Results for WTP",
+          no.space = TRUE,
+          header = F)
+```
+
+```{r mylatextables, echo=FALSE, results="asis"}
+stargazer(fit_wbc, fit_wbc_l, fit_wbno, 
+          type = 'latex', 
+          title = "Regression Results for Well-being", 
+          header = F)
+```
