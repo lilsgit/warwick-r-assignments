@@ -1,0 +1,582 @@
+---
+title: 'PS918 Psychological Models of Choice: Assessment 1 - Ratcliff Diffusion Model'
+author: 'Student ID: 1860529'
+date: "19/03/2019"
+output: pdf_document
+header-includes:
+    - \usepackage{setspace}\doublespacing
+geometry: margin = 1in
+mainfont: Times New Roman
+fontsize: 12pt
+editor_options:
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+# Section 1
+
+## Introduction 
+The diffusion decision model (DDM) is a well-defined model in psychology. In this paper, we use the DDM to analyse the data of a real-life two-choice medical decision-making task. We intended to know, firstly, is the DDM able to describe a real-life medical decision-making task for both experts and novices? Also, if so, how do cognitive processes underlying medical decision-making differ between experts and non-experts?
+
+We used no-pooling approaches, an R package rtdists, and a trial-wise maximum likelihood estimation to find the DDM parameter estimates. Moreover, after checking the model fit, we have applied the ANOVAs to compare the individual-level parameter estimates between the experts and novices. 
+
+In the following sections, we will first describe the data and the DDM. Moreover, we will analyse the parameter estimates based on our research questions. We will end the paper with a summary in the final section. 
+
+## Data description 
+The data we used in this paper contains part of the data presented in Trueblood et al. (2017), which investigates medical decision making among medical professionals and novices. In the experiment, the task of participants was to judge whether pictures of blood cells show cancerous cells (blast cells) or non-cancerous cells (non-blast cells). At the beginning of the experiment, both novices and experts completed training to familiarise themselves with blast cells. After that, each participant performed the main task in which they judged whether or not presented images were blast cells or non-blast cells. Among them, some of the cells were judged as easy and some as difficult trials by an additional group of experts. 
+
+Specifically, there are 55 participants including both experts and novices. Each participant has taken 200 trials of the task. Among the 200 trials of the task for each participant, the actual status of half of the trials is blast cells. For each condition of the actual status, half of the time it is an easy trial, while the rest of the time it is a hard trial. For each trial, participants' responses and the time they took to make decisions (response time) are recorded. 
+
+Additionally, in order to use the DDM to analyse the data, we excluded not only all the missing values but also trials in which take the participants less than 0.25 seconds or more than 2.50 seconds to make decisions. The reason is that, in those trials, participants were likely not engaged in the task. Therefore including these data points can affect the result of our analysis. By doing this, we only cut off 2.30% of the original data points, on average about 195 trials left for each participant. For each image class and difficulty level of both the experts and novices, we cut off approximately 1.13% to 4.54% of the data points, which means there are no significant uneven data points for each category. Therefore, this trim-off will not affect our data and the following results. 
+
+## Model 
+To have a more comprehensive analysis of the data, we use two versions of the DDM. One considering the difference in stimuli classes (blast image and non-blast image), on top of that, the other one including the difficulty levels of each stimuli class.  
+
+Firstly, the simple model has seven free parameters. We use two drift rates ($d_{B}$ and $d_{NB}$) to measure the quality of the information extracted from two stimuli categories, the blast image and non-blast image. We use the boundary separation parameter (*a*) and the bias parameter (*z*) to represent the caution and participants' response bias. We also consider the non-decision time parameter (*t0*) as the time taken for everything that is not the decision such as the motor processes, perceptual processes. Besides, we also add two auxiliary parameters: the diffusion parameter (*sv*) and between-trial variability in non-decision time (*st0*) to include noises in information accumulation and non-decision precess. 
+
+The extended model has nine free parameters. In this extended model, instead, we use four different drift rates to measure the quality of the information extracted from four stimuli categories - the easy blast image ($d_{BE}$) and the hard blast image ($d_{BH}$), the easy non-blast image ($d_{NBE}$) and the hard non-blast image ($d_{NBH}$). All the rest of the parameters in this model are as mentioned in the simple model (*a*, *z*, *t0*, *sv* and *st0*). 
+
+## Result
+In this section, we will present the model fit and focus on analysing the ANOVA results of the DDM. We will present the results of the extended model in details. 
+
+Firstly, by using the rtdists package in R, we constructed a maximum likelihood function and a function to generate start values for all the free parameters. No-pooling approach has been applied to generate the maximum likelihood parameter estimates of the DDM to all the participants. We have also eliminated the possibilities of local optima by multiplying fitting runs with different random starting values. Besides, we set the threshold of the absolute difference between the estimate of first log-likelihood values that is approximately equal to the maximum likelihood value (not the maximum) and the estimates of the best fit to be not larger than 0.01. By doing so, we can detect if there are any identifiability issues of the parameter estimates and avoid this potential problem. 
+
+To determine if the models were able to capture the data, we extracted the free parameters, calculated the predicted choice proportion and response times, and compared those predictions to choice proportions and response times from the data. The corrections are measured by the $R^{2}$ (coefficient of determination). 
+
+Specifically, for the simple model, the observation and prediction in both stimuli classes are highly correlated  (with all the *p* values < 0.01). For both blast and non-blast images, the values of the $R^{2}$ between the observed and predicted correct response proportions are 0.99. On the other hand, we have also tested the correlations between the observed and predicted response time for the median quantiles (average response time for the first 50% of the distribution). For the response time of the correct response, the $R^{2}$ for the blast case is 0.96 while for the non-blast image is 0.95. Moreover, for the error response, the $R^{2}$ is smaller (0.70 for the blast image, 0.77 for the non-blast image). 
+
+In general, the extended model fits well with the data (with all the *p* values < 0.01). The values of the $R^{2}$ between the observed and predicted correct response proportions are 0.98 (blast image) and 0.99 (non-blast image) for novices, 0.92 (blast image) and 0.97 (non-blast image) for experts (Figure 1a-1b). For experts, the overall $R^{2}$s of the observed and predicted response time distributions for the first 10%, 50% and 90% quantiles are smaller than the ones for novices (Figure 1c-1d). Figure 1c-1d also indicates that the DDM fits better for the response time of the correct response than the incorrect response. The adequacy of the DDM decreases along with the increase of quantiles of the response time distribution. Overall, there are agreements between theoretical and empirical data to a certain degree. Therefore, we applied ANOVA analyses of the parameter estimates to see if the cognitive process captured by the DDM differs between experts and novices. 
+
+According to the simple model, the differences between experts and novices in the parameter *a* (*F*(1, 53) = 23.19, *p* value < 0.01), the parameter *z* (*F*(1, 53) = 15.16, *p* value < 0.01) and the parameter *st0* (*F*(1, 53) = 6.69, *p* value = 0.01) are statistically significant. For drift rates, there is a significant difference between experts and novices (*F*(1, 53) = 8.03, *p* value < 0.01). There is also an interaction effect of the group type (experts or novices) and the image classification on drift rates (*F*(1, 53) = 4.83, *p* value = 0.03). 
+
+In the extended model, the differences in the key model parameters linked to behavioural characteristics of the experts and novices are significant. More specifically, the difference between experts and novices in the parameter *a* is significant (*F*(1, 53) = 29.98, *p* value < 0.01) (Figure 2a), as also for the parameter *z* (*F*(1, 53) = 25.17, *p* value < 0.01) (Figure 2b). Interestingly, there is a strong significant difference between experts and novices in drift rates (*F*(1, 53) = 11.84, *p* value < 0.01). There is a weak interaction effect of the image classification and group type on dirft rates (*F*(1, 53) = 2.90, *p* value = 0.09) (Figure 2e). There is an interaction effect of difficulty level and group type on drift rates as well (*F*(1, 53) = 9.20, *p* value < 0.01) (Figure 2d). Moreover, when considering the difficulty level and image classification, there is no significant difference between experts and novices (*F*(1, 53) = 2.68, *p* value = 0.11). Additionally, there is a small significant difference in parameter *st0* between experts and novices (*F*(1, 53) = 5.87, *p* value = 0.02) (Figure 2c). One thing to notice here is that although the difference between experts and novices in parameter *z* is significant, the difference between experts and novices in the actual bias (*z* - $\frac{a}{2}$) is not significant (*F*(1, 53) = 0.08, *p* value = 0.78). 
+
+Although the 3-way interaction effect among image classification, difficulty level and group type on drift rates is not significant, the *p* value is still small, so we inspect the follow-up tests based on this interaction in an exploratory manner. For all of the follow-up analyses, we restricted the overall probability of committing a Type 1 error to 0.05 using the Bonferroni-Holm method. The difference is 1.94 for the $d_{BE}$ (*p* value < 0.01), and 1.38 for the -$d_{NBE}$ (*p* value < 0.01); 1.19 for $d_{BH}$ (*p* value = 0.01) and 0.12 for the -$d_{NBH}$ (*p* value = 0.78). Therefore, apart from the hard non-blast image, experts have larger drift rates than novices. 
+
+In general, it appears that the characteristics of hard non-blast images are the most difficult to spot, while the characteristics of easy non-blast are the simplest. On average, drift rates are lower when stimuli were harder to discriminate. There is a significant difference between participants’ ability to perceive the characteristics of the blast and non-blast images. Experts have larger boundary separation than novices. Experts also have larger drift rates, especially the easy trials. These results show that experts give faster, more accurate responses compared to novices, and this difference is more substantial for easy condition trials. 
+
+## Conclusion
+Generally, the result of the model fits indicates that the DDM can describe real-life medical decision making for both experts and novices to certain degrees. The $R^{2}$s suggest that the DDM fits better for novices' decision-making process. 
+
+Although novices and experts have similar behavioural characteristics, there are differences in the cognitive process during decision making. Experts give a more accurate response, and they are better at identifying the correct cells under different conditions. 
+
+The DDM also has some limitations. The extended model has nine free parameters, which means the parameter recoveries is highly likely to show bad results. We have also observed that overall the model does not have high adequacy in explaining the response time distribution. These limitations may reduce the credibility of our result. Further analysis of the data based on different models is needed.
+
+```{r sec, include=FALSE}
+library("rtdists")
+library("tidyverse")
+library("afex")
+library("car")
+library("ggpubr")
+library("cowplot")
+library("ggdistribute") 
+library("emmeans")
+theme_set(theme_bw(base_size = 15) +
+            theme(legend.position="bottom",
+                  panel.grid.major.x = element_blank(),
+                  panel.grid.minor.x = element_blank()))
+set_sum_contrasts()
+med <- read_csv("medical_dm.csv")
+glimpse(med)
+med <- remove_missing(med) 
+mednew <- med %>%
+  mutate(id = as.factor(id),
+         group = recode_factor(group, "experienced" = "Expert", 
+                               "inexperienced" = "Expert", 
+                               "novice" = "Novice"), 
+         block = as.factor(block), 
+         trial = as.factor(trial),
+         classification = as.factor(classification), 
+         difficulty = factor(difficulty, c("easy", "hard"), c("Easy", "Hard")),
+         response = as.factor(response)) %>%
+  mutate(response = factor(response, c("non-blast", "blast"),
+                                   c( "lower", "upper")))
+mednew <- mednew %>%
+  filter(.$rt <= 2.5 & .$rt >= 0.25)
+load("res_med_com1.rda")
+
+#MODEL FIT FOR COMPLICATED MODEL 
+#Response proportions (pdiffusion):
+obs_com_p <- mednew %>% 
+  group_by(id, group, difficulty) %>%
+  summarise(resp_b = sum(response == "upper" & classification == "blast")/
+              sum(classification == "blast"),
+            resp_n = sum(response == "lower" & classification == "non-blast")/
+              sum(classification == "non-blast"))  %>%
+  arrange(desc(group))
+
+pred_comn <- res_med_com %>%
+  group_by(id, group) %>%
+  summarise(Easy = pdiffusion(Inf, response = "upper", 
+                              a = a, v = v1, 
+                              t0 = t0, z = z, 
+                              sv = sv, st0 = st0),
+            Hard = pdiffusion(Inf, response = "upper", 
+                              a = a, v = v2, 
+                              t0 = t0, z = z, 
+                              sv = sv, st0 = st0)) %>%
+  gather(Easy, Hard, key = "difficulty", value = "blast")
+pred_comm <- res_med_com %>%
+  group_by(id, group) %>%
+  summarise(Easy = pdiffusion(Inf, response = "lower", 
+                              a = a, v = v3, 
+                              t0 = t0, z = z, 
+                              sv = sv, st0 = st0),
+            Hard = pdiffusion(Inf, response = "lower", 
+                              a = a, v = v4, 
+                              t0 = t0, z = z, 
+                              sv = sv, st0 = st0)) %>%
+  gather(Easy, Hard, key = "difficulty", value = "nonblast")
+
+pred_com_p <- cbind(pred_comn, pred_comm) %>%
+  arrange(-desc(id)) %>%
+  select(id:blast, nonblast) %>%
+  arrange(desc(group))
+
+rps_com <- cbind(obs_com_p, pred_com_p)
+
+#Scatter plot: 
+g7 <- ggscatter(rps_com, x = "resp_b", y = "blast",
+                add.params = list(color = "black"), 
+                color = "difficulty", palette = c("black", "grey"),
+                xlab = "Data Choice Prob", 
+                ylab = "Computed Choice Prob", 
+                title = "Blast") + 
+  facet_grid(~ group) +
+  stat_cor(aes(label = paste(..rr.label.., ..p.label.., sep = "~`,`~"))) +
+  geom_abline(slope = 1) 
+g7 <- g7 %>%
+  ggpar(legend.title = "Difficulty", legend = c("bottom"))
+
+g8 <- ggscatter(rps_com, x = "resp_n", y = "nonblast",
+                add.params = list(color = "black"), 
+                color = "difficulty", palette = c("black", "grey"),
+                xlab = "Data Choice Prob", 
+                ylab = "Computed Choice Prob", 
+                title = "Non-Blast") +
+  facet_grid(~ group) + 
+  stat_cor(aes(label = paste(..rr.label.., ..p.label.., sep = "~`,`~"))) +
+  geom_abline(slope = 1)
+g8 <- g8 %>%
+  ggpar(legend.title = "Difficulty", legend = c("bottom"))
+
+#Response quantiles (qdiffusion):
+obs_com_q11 <- mednew %>%
+  group_by(id, group, difficulty) %>%
+  summarise(Correct = quantile(rt[classification == "blast" & response == "upper"], 
+                               probs = 0.1), 
+            Incorrect = quantile(rt[classification == "blast" & response == "lower"], 
+                                 probs = 0.1)) %>%
+  gather(Correct, Incorrect, key = "correctness", value = "rt_b") %>% 
+  arrange(desc(group))
+obs_com_q12 <- mednew %>%
+  group_by(id, group, difficulty) %>%
+  summarise(Incorrect = quantile(rt[classification == "non-blast" & response == "upper"], 
+                                 probs = 0.1), 
+            Correct = quantile(rt[classification == "non-blast" & response == "lower"], 
+                               probs = 0.1)) %>%
+  gather(Correct, Incorrect, key = "correctness", value = "rt_nb") %>% 
+  arrange(desc(group))
+obs_com_q1 <- cbind(obs_com_q11, obs_com_q12) %>% 
+  select(-id1, -group1, -difficulty1, -correctness1)
+obs_com_q1$dis <- "10%"
+
+obs_com_q21 <- mednew %>%
+  group_by(id, group, difficulty) %>%
+  summarise(Correct = quantile(rt[classification == "blast" & response == "upper"], 
+                               probs = 0.5), 
+            Incorrect = quantile(rt[classification == "blast" & response == "lower"], 
+                                 probs = 0.5)) %>%
+  gather(Correct, Incorrect, key = "correctness", value = "rt_b") %>% 
+  arrange(desc(group))
+obs_com_q22 <- mednew %>%
+  group_by(id, group, difficulty) %>%
+  summarise(Incorrect = quantile(rt[classification == "non-blast" & response == "upper"], 
+                                 probs = 0.5), 
+            Correct = quantile(rt[classification == "non-blast" & response == "lower"], 
+                               probs = 0.5)) %>%
+  gather(Correct, Incorrect, key = "correctness", value = "rt_nb") %>% 
+  arrange(desc(group))
+obs_com_q2 <- cbind(obs_com_q21, obs_com_q22) %>% 
+  select(-id1, -group1, -difficulty1, -correctness1)
+obs_com_q2$dis <- "50%"
+
+obs_com_q31 <- mednew %>%
+  group_by(id, group, difficulty) %>%
+  summarise(Correct = quantile(rt[classification == "blast" & response == "upper"], 
+                               probs = 0.9), 
+            Incorrect = quantile(rt[classification == "blast" & response == "lower"], 
+                                 probs = 0.9)) %>%
+  gather(Correct, Incorrect, key = "correctness", value = "rt_b") %>% 
+  arrange(desc(group))
+obs_com_q32 <- mednew %>%
+  group_by(id, group, difficulty) %>%
+  summarise(Incorrect = quantile(rt[classification == "non-blast" & response == "upper"], 
+                                 probs = 0.9), 
+            Correct = quantile(rt[classification == "non-blast" & response == "lower"], 
+                               probs = 0.9)) %>%
+  gather(Correct, Incorrect, key = "correctness", value = "rt_nb") %>% 
+  arrange(desc(group))
+obs_com_q3 <- cbind(obs_com_q31, obs_com_q32) %>% 
+  select(-id1, -group1, -difficulty1, -correctness1)
+obs_com_q3$dis <- "90%"
+
+obs <- rbind(obs_com_q1, obs_com_q2, obs_com_q3) %>% 
+  arrange(-desc(correctness))
+
+pred_como11 <- res_med_com %>%
+  group_by(id, group) %>%
+  summarise(easy = round(qdiffusion(c(0.1), response = "upper",
+                                    a = a, v = v1, 
+                                    t0 = t0, z = z, 
+                                    sv = sv, st0 = st0,
+                                    scale_p = TRUE), 4), 
+            hard = round(qdiffusion(c(0.1), response = "upper",
+                                    a = a, v = v2, 
+                                    t0 = t0, z = z, 
+                                    sv = sv, st0 = st0,
+                                    scale_p = TRUE), 4)) %>%
+  gather(easy, hard, key = "difficulty", value = "Correct")
+pred_como21 <- res_med_com %>%
+  group_by(id, group) %>%
+  summarise(easy = round(qdiffusion(c(0.1), response = "lower",
+                                    a = a, v = v1, 
+                                    t0 = t0, z = z, 
+                                    sv = sv, st0 = st0,
+                                    scale_p = TRUE), 4),
+            hard = round(qdiffusion(c(0.1), response = "lower",
+                                    a = a, v = v2, 
+                                    t0 = t0, z = z, 
+                                    sv = sv, st0 = st0,
+                                    scale_p = TRUE), 4)) %>%
+  gather(easy, hard, key = "difficulty", value = "Incorrect")
+pre_comoo1 <- cbind(pred_como11, pred_como21) %>% 
+  select(-id1, -group1, -difficulty1) %>% 
+  gather(Correct, Incorrect, key = "correctness", value = "prt_b") %>% 
+  arrange(desc(group))
+
+pred_comp11 <- res_med_com %>%
+  group_by(id, group) %>%
+  summarise(easy = round(qdiffusion(c(0.1), response = "upper",
+                                    a = a, v = v3, 
+                                    t0 = t0, z = z, 
+                                    sv = sv, st0 = st0,
+                                    scale_p = TRUE), 4), 
+            hard = round(qdiffusion(c(0.1), response = "upper",
+                                    a = a, v = v4, 
+                                    t0 = t0, z = z, 
+                                    sv = sv, st0 = st0,
+                                    scale_p = TRUE), 4)) %>%
+  gather(easy, hard, key = "difficulty", value = "Incorrect")
+pred_comp21 <- res_med_com %>%
+  group_by(id, group) %>%
+  summarise(easy = round(qdiffusion(c(0.1), response = "lower",
+                                    a = a, v = v3, 
+                                    t0 = t0, z = z, 
+                                    sv = sv, st0 = st0,
+                                    scale_p = TRUE), 4), 
+            hard = round(qdiffusion(c(0.1), response = "lower",
+                                    a = a, v = v4, 
+                                    t0 = t0, z = z, 
+                                    sv = sv, st0 = st0,
+                                    scale_p = TRUE), 4)) %>%
+  gather(easy, hard, key = "difficulty", value = "Correct")
+pre_comoo2 <- cbind(pred_comp11, pred_comp21) %>% 
+  select(-id1, -group1, -difficulty1) %>% 
+  gather(Correct, Incorrect, key = "correctness", value = "prt_nb") %>% 
+  arrange(desc(group))
+
+pred_com_q1 <- cbind(pre_comoo1, pre_comoo2) %>%
+  select(-id1, -group1, -difficulty1, -correctness1) %>%
+  arrange(-desc(id)) %>% 
+  arrange(desc(group)) %>% 
+  arrange(-desc(correctness)) 
+pred_com_q1$dis <- "10%"
+
+pred_como12 <- res_med_com %>%
+  group_by(id, group) %>%
+  summarise(easy = round(qdiffusion(c(0.5), response = "upper",
+                                    a = a, v = v1, 
+                                    t0 = t0, z = z, 
+                                    sv = sv, st0 = st0,
+                                    scale_p = TRUE), 4), 
+            hard = round(qdiffusion(c(0.5), response = "upper",
+                                    a = a, v = v2, 
+                                    t0 = t0, z = z, 
+                                    sv = sv, st0 = st0,
+                                    scale_p = TRUE), 4)) %>%
+  gather(easy, hard, key = "difficulty", value = "Correct")
+pred_como22 <- res_med_com %>%
+  group_by(id, group) %>%
+  summarise(easy = round(qdiffusion(c(0.5), response = "lower",
+                                    a = a, v = v1, 
+                                    t0 = t0, z = z, 
+                                    sv = sv, st0 = st0,
+                                    scale_p = TRUE), 4),
+            hard = round(qdiffusion(c(0.5), response = "lower",
+                                    a = a, v = v2, 
+                                    t0 = t0, z = z, 
+                                    sv = sv, st0 = st0,
+                                    scale_p = TRUE), 4)) %>%
+  gather(easy, hard, key = "difficulty", value = "Incorrect")
+pre_comoo3 <- cbind(pred_como12, pred_como22) %>% 
+  select(-id1, -group1, -difficulty1) %>% 
+  gather(Correct, Incorrect, key = "correctness", value = "prt_b") %>% 
+  arrange(desc(group))
+
+pred_comp12 <- res_med_com %>%
+  group_by(id, group) %>%
+  summarise(easy = round(qdiffusion(c(0.5), response = "upper",
+                                    a = a, v = v3, 
+                                    t0 = t0, z = z, 
+                                    sv = sv, st0 = st0,
+                                    scale_p = TRUE), 4), 
+            hard = round(qdiffusion(c(0.5), response = "upper",
+                                    a = a, v = v4, 
+                                    t0 = t0, z = z, 
+                                    sv = sv, st0 = st0,
+                                    scale_p = TRUE), 4)) %>%
+  gather(easy, hard, key = "difficulty", value = "Incorrect")
+pred_comp22 <- res_med_com %>%
+  group_by(id, group) %>%
+  summarise(easy = round(qdiffusion(c(0.5), response = "lower",
+                                    a = a, v = v3, 
+                                    t0 = t0, z = z, 
+                                    sv = sv, st0 = st0,
+                                    scale_p = TRUE), 4), 
+            hard = round(qdiffusion(c(0.5), response = "lower",
+                                    a = a, v = v4, 
+                                    t0 = t0, z = z, 
+                                    sv = sv, st0 = st0,
+                                    scale_p = TRUE), 4)) %>%
+  gather(easy, hard, key = "difficulty", value = "Correct")
+pre_comoo4 <- cbind(pred_comp12, pred_comp22) %>% 
+  select(-id1, -group1, -difficulty1) %>% 
+  gather(Correct, Incorrect, key = "correctness", value = "prt_nb") %>% 
+  arrange(desc(group))
+
+pred_com_q2 <- cbind(pre_comoo3, pre_comoo4) %>%
+  select(-id1, -group1, -difficulty1, -correctness1) %>%
+  arrange(-desc(id)) %>% 
+  arrange(desc(group)) %>% 
+  arrange(-desc(correctness)) 
+pred_com_q2$dis <- "50%"
+
+pred_como13 <- res_med_com %>%
+  group_by(id, group) %>%
+  summarise(easy = round(qdiffusion(c(0.9), response = "upper",
+                                    a = a, v = v1, 
+                                    t0 = t0, z = z, 
+                                    sv = sv, st0 = st0,
+                                    scale_p = TRUE), 4), 
+            hard = round(qdiffusion(c(0.9), response = "upper",
+                                    a = a, v = v2, 
+                                    t0 = t0, z = z, 
+                                    sv = sv, st0 = st0,
+                                    scale_p = TRUE), 4)) %>%
+  gather(easy, hard, key = "difficulty", value = "Correct")
+pred_como23 <- res_med_com %>%
+  group_by(id, group) %>%
+  summarise(easy = round(qdiffusion(c(0.9), response = "lower",
+                                    a = a, v = v1, 
+                                    t0 = t0, z = z, 
+                                    sv = sv, st0 = st0,
+                                    scale_p = TRUE), 4),
+            hard = round(qdiffusion(c(0.9), response = "lower",
+                                    a = a, v = v2, 
+                                    t0 = t0, z = z, 
+                                    sv = sv, st0 = st0,
+                                    scale_p = TRUE), 4)) %>%
+  gather(easy, hard, key = "difficulty", value = "Incorrect")
+pre_comoo5 <- cbind(pred_como13, pred_como23) %>% 
+  select(-id1, -group1, -difficulty1) %>% 
+  gather(Correct, Incorrect, key = "correctness", value = "prt_b") %>% 
+  arrange(desc(group))
+
+pred_comp13 <- res_med_com %>%
+  group_by(id, group) %>%
+  summarise(easy = round(qdiffusion(c(0.9), response = "upper",
+                                    a = a, v = v3, 
+                                    t0 = t0, z = z, 
+                                    sv = sv, st0 = st0,
+                                    scale_p = TRUE), 4), 
+            hard = round(qdiffusion(c(0.9), response = "upper",
+                                    a = a, v = v4, 
+                                    t0 = t0, z = z, 
+                                    sv = sv, st0 = st0,
+                                    scale_p = TRUE), 4)) %>%
+  gather(easy, hard, key = "difficulty", value = "Incorrect")
+pred_comp23 <- res_med_com %>%
+  group_by(id, group) %>%
+  summarise(easy = round(qdiffusion(c(0.9), response = "lower",
+                                    a = a, v = v3, 
+                                    t0 = t0, z = z, 
+                                    sv = sv, st0 = st0,
+                                    scale_p = TRUE), 4), 
+            hard = round(qdiffusion(c(0.9), response = "lower",
+                                    a = a, v = v4, 
+                                    t0 = t0, z = z, 
+                                    sv = sv, st0 = st0,
+                                    scale_p = TRUE), 4)) %>%
+  gather(easy, hard, key = "difficulty", value = "Correct")
+pre_comoo6 <- cbind(pred_comp13, pred_comp23) %>% 
+  select(-id1, -group1, -difficulty1) %>% 
+  gather(Correct, Incorrect, key = "correctness", value = "prt_nb") %>% 
+  arrange(desc(group))
+
+pred_com_q3 <- cbind(pre_comoo5, pre_comoo6) %>%
+  select(-id1, -group1, -difficulty1, -correctness1) %>%
+  arrange(-desc(id)) %>% 
+  arrange(desc(group)) %>% 
+  arrange(-desc(correctness)) 
+pred_com_q3$dis <- "90%"
+
+shs <- rbind(pred_com_q1, pred_com_q2, pred_com_q3) %>% 
+  arrange(-desc(dis)) %>% 
+  arrange(-desc(correctness)) 
+
+rqs_comm <- cbind(obs, shs) %>%
+  select(- id1, -group1, -difficulty1, -dis1, -correctness1)
+
+sh1 <- ggscatter(rqs_comm, x = "rt_b", y = "prt_b",
+                 add.params = list(color = "black"), merge = TRUE,
+                 color = "dis", palette = c("black", "grey44", "grey80"),
+                 shape = "correctness",
+                 xlab = "Data Response Time", 
+                 ylab = "Computed Response Time", 
+                 title = "Blast") + 
+  facet_grid(~ group) + 
+  stat_cor(aes(label = paste(..rr.label.., ..p.label.., sep = "~`,`~"))) +
+  geom_abline(slope = 1) +
+  labs(shape = "Type", colour = "Quantile") 
+sh1 <- sh1 %>%  
+  ggpar(legend = c("bottom"))
+
+sh2 <- ggscatter(rqs_comm, x = "rt_nb", y = "prt_nb",
+                 add.params = list(color = "black"), merge = TRUE,
+                 color = "dis", palette = c("black", "grey44", "grey80"),
+                 shape = "correctness",
+                 xlab = "Data Response Time", 
+                 ylab = "Computed Response Time", 
+                 title = "Non-Blast") + 
+  facet_grid(~ group) + 
+  stat_cor(aes(label = paste(..rr.label.., ..p.label.., sep = "~`,`~"))) +
+  geom_abline(slope = 1) +
+  labs(shape = "Type", colour = "Quantile") 
+sh2 <- sh2 %>%  
+  ggpar(legend = c("bottom"))
+```
+```{r secc, echo=FALSE, fig.height=9, fig.width=12, fig.align='center', warning=FALSE}
+plot_grid(g7, g8, sh1, sh2, labels = "auto", ncol = 2) 
+```
+
+*Figure 1*. DDM quality of model fit. Comparison of model predictions (vertical axes) and observed results (horizontal axes) for response proportions (a–b) and response time distribution (c-d) under blast and non-blast images, for experts (left panels) and novices (right panels). The solid diagonal line indicates perfect agreement where predictions and observations exactly coincide. The colours represent difficulty levels (a-b) and quantiles (c-d), while the shapes stand for the response types (c-d).
+ 
+```{r sfss, include=FALSE}
+res_med_coms <- res_med_com %>% 
+  select(id, group, a, t0, z, sv, st0, v1, v2, v3, v4) %>% 
+  nest(id, group) %>% 
+  mutate(ids = 1:55) %>% 
+  unnest() %>% 
+  mutate(v3 = -v3, v4 = -v4, 
+         bias = z - a/2)
+
+a1 <- aov_car(a ~ group + Error(ids), res_med_coms)
+a1
+a2 <- aov_car(z ~ group + Error(ids), res_med_coms)
+a2
+a3 <- aov_car(st0 ~ group + Error(ids), res_med_coms)
+a3
+
+#ANOVA for the drift rates: 
+drift_res_com1 <- res_med_coms %>% 
+  select(ids, group, v1, v3) %>% 
+  gather(v1, v3, key = "class", value = "Easy") %>% 
+  mutate(class = factor(class, c("v1", "v3"), c("Blast", "Non-Blast"))) %>% 
+  arrange(-desc(ids)) 
+drift_res_com2 <- res_med_coms %>% 
+  select(ids, group, v2, v4) %>% 
+  gather(v2, v4, key = "class", value = "Hard") %>% 
+  mutate(class = factor(class, c("v2", "v4"), c("Blast", "Non-Blast"))) %>% 
+  arrange(-desc(ids)) 
+
+drift_res_com <- merge(drift_res_com1, drift_res_com2) %>% 
+  gather(Easy, Hard, key = "difficulty", value = "drift") %>% 
+  arrange(-desc(ids)) 
+glimpse(drift_res_com)
+
+m2 <- lm(drift ~ group*class*difficulty, drift_res_com)
+summary(m2)
+
+aww <- aov_ez("ids", "drift", drift_res_com, between = "group", 
+              within = c("class", "difficulty"))
+aww
+ay <- afex_plot(a1, x = "group", error = "between",
+                data_geom = ggbeeswarm::geom_beeswarm,
+                data_arg = list(
+                  dodge.width = 0.5,  
+                  cex = 0.8,
+                  color = "darkgrey")) +
+  geom_line(aes(group = 1)) +
+  theme_pubr() +
+  xlab("Group") + 
+  ylab("Parameter a")
+
+ah <- afex_plot(a2, x = "group", 
+                data_geom = ggbeeswarm::geom_beeswarm,
+                data_arg = list(
+                  dodge.width = 0.5,  
+                  cex = 0.8,
+                  color = "darkgrey")) +
+  geom_line(aes(group = 1)) +
+  theme_pubr() +
+  xlab("Group") + 
+  ylab("Parameter z")
+
+au <- afex_plot(a3, x = "group", 
+                data_geom = ggbeeswarm::geom_beeswarm,
+                data_arg = list(
+                  dodge.width = 0.5,  
+                  cex = 0.8,
+                  color = "darkgrey")) +
+  geom_line(aes(group = 1)) +
+  theme_pubr() +
+  xlab("Group") + 
+  ylab("Parameter st0")
+
+af <- afex_plot(aww, x = "group", trace = "difficulty",  
+                error = "none", dodge = 0.5, legend_title = "Difficulty Level",
+                data_geom = ggbeeswarm::geom_beeswarm,
+                data_arg = list(
+                  dodge.width = 0.5,  
+                  cex = 0.8,
+                  color = "darkgrey"))  +
+  theme_pubr() +
+  xlab("Group") + 
+  ylab("Drift Rate")
+af <- af %>%
+  ggpar(legend = c("bottom"))
+
+ak <- afex_plot(aww, x = "group", trace = "class",  
+                error = "none", dodge = 0.5, legend_title = "Classification",
+                data_geom = ggbeeswarm::geom_beeswarm,
+                data_arg = list(
+                  dodge.width = 0.5,  
+                  cex = 0.8,
+                  color = "darkgrey"))  +
+  theme_pubr() +
+  xlab("Group") + 
+  ylab("Drift Rate")
+ak <- ak %>%
+  ggpar(legend = c("bottom"))
+
+oj <- plot_grid(ay, ah, au, nrow = 1, labels = "auto")
+mj <- plot_grid(af, ak, nrow = 1, labels = c("d", "e"))
+```
+```{r ksfsk, echo=FALSE, fig.height=9, fig.width=11, fig.align='center', warning=FALSE}
+plot_grid(oj, mj, nrow = 2)
+```
+
+*Figure 2*. DDM fit results. Differences between experts and novices in parameter *a*, *z*, *st0* (a-c), and drift rates (d-e). Note that in the model, drift rates for blast and non-blast images are positive and negative, respectively. In the panels we have presented $d_{BE}$, $d_{BH}$, –$d_{NBE}$, –$d_{NBH}$ for ease of comparison.

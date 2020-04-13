@@ -1,0 +1,978 @@
+---
+title: ""
+author: ''
+date: ""
+output: pdf_document
+fontsize: 10pt
+editor_options: 
+  chunk_output_type: console
+---
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+# Section 2
+```{r a, message=FALSE, warning=FALSE}
+#########################################################################################
+#                                    GENERAL SETTING                                    #
+#########################################################################################
+library("tidyverse")
+library("afex")
+library("car")
+library("ggpubr")
+library("cowplot")
+library("readxl")
+theme_set(theme_bw(base_size = 15) +
+            theme(legend.position="bottom",
+                  panel.grid.major.x = element_blank(),
+                  panel.grid.minor.x = element_blank()))
+theme_update(plot.title = element_text(hjust = 0.5, face = "plain"))
+set_sum_contrasts()
+```
+
+```{r b, fig.align='center', fig.height=2, fig.width=5, warning=FALSE}
+#########################################################################################
+#                                   DATA PREPARATION                                    #
+#########################################################################################
+#LOAD DATA
+gamble <- read_csv("gambles.csv")
+choice <- read_xls("DATA_Study2_Rieskamp_2008_.xls", 3)
+
+#ARRANGE DATA
+cptdata <- cbind(choice, gamble) %>% 
+  gather(id, choice, `1`:`30`) %>% 
+  #select(-`choice pair__1`, -subjects, -`choice pair`) %>% 
+  select(id, choicepair, A1_prob, A1_payoff, A2_prob, A2_payoff, 
+         B1_prob, B1_payoff, B2_prob, B2_payoff, choice)
+
+cptdata <- cptdata %>%
+  group_by(id) %>%
+  mutate(ev_a = A1_prob*A1_payoff + A2_prob*A2_payoff, 
+         ev_b = B1_prob*B1_payoff + B2_prob*B2_payoff, 
+         ev_diff = ev_b - ev_a)
+##check the gamble pairs and people's choices
+a1 <- ggplot(cptdata, aes(x = ev_diff)) + 
+  geom_density() 
+a2 <- ggplot(cptdata, aes(x = as.factor(choice))) + 
+  geom_histogram(stat="count")
+plot_grid(a1, a2, ncol = 2)
+```
+
+```{r c}
+#########################################################################################
+#                                  SIMULATION FUNCTIONS                                 #
+#########################################################################################
+#LOGIT FUNCTION
+logit_f <- function(A1_payoff, A2_payoff, A1_prob, 
+                    B1_payoff, B2_payoff, B1_prob, 
+                    alpha, beta, lambda, gamma, delta, phi) {
+  u <- function(x) {
+    if (x > 0) {
+      (abs(x)^alpha)
+    } else {
+      (sign(x)*lambda*(abs(x)^beta))
+    }
+  } ##utility function
+  w <- function(x, p) {
+    if (x > 0) {
+      (p^gamma)/(((p^gamma) + ((1 - p)^gamma))^(1/gamma))
+    } else {
+      (p^delta)/(((p^delta) + ((1 - p)^delta))^(1/delta))
+    }
+  } ##weighting function
+  v <- function(pf1, pf2, ppf1) {
+    max <- max(pf1, pf2)
+    min <- min(pf1, pf2)
+    if (max == pf1) {
+      pf <- ppf1
+    } else if (max == pf2) {
+      pf <- 1 - ppf1
+    }
+    if (pf1 >= 0 & pf2 >= 0) {
+      w(max, pf)*u(max) + 
+        (w(max, 1) - w(max, pf))*u(min)
+    } else if (pf1 <= 0 & pf2 <= 0) {
+      w(min, 1 - pf)*u(min) + 
+        (w(min, 1) - w(min, 1 - pf))*u(max)
+    } else {
+      w(max, pf)*u(max) + 
+        w(min, 1 - pf)*u(min)
+    }
+  } ##value function
+  va <- v(A1_payoff, A2_payoff, A1_prob)
+  vb <- v(B1_payoff, B2_payoff, B1_prob)
+  vdiff <- vb - va
+  return(1/(1 + exp(-phi*vdiff)))
+}
+
+logit <- cptdata %>% 
+  rowwise() %>% 
+  mutate(logit = logit_f(A1_payoff, A2_payoff, A1_prob, 
+                         B1_payoff, B2_payoff, B1_prob, 
+                         alpha = 0.1, beta = 0.1, lambda = 2, 
+                         gamma = 1, delta = 1, phi = 2)) 
+
+#LIKELIHOOD MODEL
+ll_cpt <- function(alpha, beta, lambda, gamma, delta, phi, df) {
+  pd <- rowwise(df) %>% summarise(l = logit_f(A1_payoff, A2_payoff, A1_prob,
+                                              B1_payoff, B2_payoff, B1_prob, 
+                                              alpha, beta, lambda, gamma, delta,
+                                              phi))
+  pb <- as.vector(pd$l, mode = "numeric")
+  density <- vector("numeric", length(df$choice))
+  density[df$choice == 0] <- 1 - pb[df$choice == 0]
+  density[df$choice == 1] <- pb[df$choice == 1]
+  if (any(density == 0)) {
+    return(1e6)
+  } else {
+    return(-sum(log(density)))
+  }
+}
+
+ll_cpt(0.5, 0.5, 2, 0.5, 0.5, 0.5, cptdata)
+
+#WRAPPER FUNCTION (SIMPLE MODEL)
+wrapper1_1 <- function(par, df) {
+  ll_cpt(par[1], par[1], par[2], 1, 1, par[3], df)
+} ##version 1 (no beta)
+wrapper1_2 <- function(par, df) {
+  ll_cpt(par[1], par[2], par[3], 1, 1, par[4], df)
+} ##version 2
+wrapper1_3 <- function(par, df) {
+  ll_cpt(par[1], par[2], 1, 1, 1, par[3], df)
+} ##version 3 (no lambda)
+#WRAPPER FUNCTION (EXTENDED MODEL)
+wrapper2_1 <- function(par, df) {
+  ll_cpt(par[1], par[1], par[2], par[3], par[4], par[5], df)
+} ##version 1 (no beta)
+wrapper2_2 <- function(par, df) {
+  ll_cpt(par[1], par[2], par[3], par[4], par[5], par[6], df)
+} ##version 2
+wrapper2_3 <- function(par, df) {
+  ll_cpt(par[1], par[2], 1, par[3], par[4], par[5], df)
+} ##version 3 (no lambda)
+
+#GENERATE START VALUES (SIMPLE MODEL)
+get_start_values1_1 <- function() {
+  c(alpha = runif(1, 0, 1), lambda = runif(1, 0, 2.5), phi = runif(1, 0, 1))
+} ##version 1 (no beta)
+get_start_values1_2 <- function() {
+  c(alpha = runif(1, 0, 1), beta = runif(1, 0, 1), lambda = runif(1, 0, 2.5), 
+    phi = runif(1, 0, 1))
+} ##version 2
+get_start_values1_3 <- function() {
+  c(alpha = runif(1, 0, 1), beta = runif(1, 0, 1), phi = runif(1, 0, 1))
+} ##version 3 (no lambda)
+#GENERATE START VALUES (EXTENDED MODEL)
+get_start_values2_1 <- function() {
+  c(alpha = runif(1, 0, 1), lambda = runif(1, 0, 2.5), gamma = runif(1, 0, 1),
+    delta = runif(1, 0, 1), phi = runif(1, 0, 1))
+} ##version 1 (no beta)
+get_start_values2_2 <- function() {
+  c(alpha = runif(1, 0, 1), beta = runif(1, 0, 1), lambda = runif(1, 0, 2.5),
+    gamma = runif(1, 0, 1), delta = runif(1, 0, 1), phi = runif(1, 0, 1))
+} ##version 2
+get_start_values2_3 <- function() {
+  c(alpha = runif(1, 0, 1), beta = runif(1, 0, 1), gamma = runif(1, 0, 1),
+    delta = runif(1, 0, 1), phi = runif(1, 0, 1))
+} ##version 3 (no lambda)
+
+#GENERATE PARAMETER VALUES 
+runs1_13 <- function(data) {
+  mle <- data[which.max(data$logLik), 1:5] 
+  which_max <- which(round(max(data$logLik), 3) == round(data$logLik, 3))
+  which_max <- which_max[which_max != which.max(data$logLik)]
+  mlenew <- mle
+  mlenew[abs(mle - data[which_max[1], 1:5]) > 0.01] <- NA
+  mlenew
+} ##simple model version 1 and 3
+runs1_2 <- function(data) {
+  mle <- data[which.max(data$logLik), 1:6]  
+  which_max <- which(round(max(data$logLik), 3) == round(data$logLik, 3))
+  which_max <- which_max[which_max != which.max(data$logLik)]
+  mlenew <- mle
+  mlenew[abs(mle - data[which_max[1], 1:6]) > 0.01] <- NA
+  mlenew
+}##simple model version 2
+runs2_13 <- function(data) {
+  mle <- data[which.max(data$logLik), 1:7]
+  which_max <- which(round(max(data$logLik), 3) == round(data$logLik, 3))
+  which_max <- which_max[which_max != which.max(data$logLik)]
+  mlenew <- mle
+  mlenew[abs(mle - data[which_max[1], 1:7]) > 0.01] <- NA
+  mlenew
+} ##extended model version 1 and 3
+runs2_2 <- function(data) {
+  mle <- data[which.max(data$logLik), 1:8]
+  which_max <- which(round(max(data$logLik), 3) == round(data$logLik, 3))
+  which_max <- which_max[which_max != which.max(data$logLik)]
+  mlenew <- mle
+  mlenew[abs(mle - data[which_max[1], 1:8]) > 0.01] <- NA
+  mlenew
+} ##extended model version 2
+```
+
+```{r d, message=FALSE, eval=FALSE}
+#########################################################################################
+#                                   MODEL SIMULATION                                    #
+#########################################################################################
+#SIMPLE MODEL
+##VERSION 1
+res_cpt1_1 <- cptdata %>%
+  group_by(id) %>% ##individual-level
+  do(fits = rerun(6, nlminb(get_start_values1_1(), wrapper1_1, df = .,
+                            lower = c(0, 0, 0), upper = c(3, 10, Inf))) %>%
+       map_dfr(~as_tibble(cbind(t(.$par),
+                                logLik = -.$objective,
+                                convergence = .$convergence)))) %>% 
+  ungroup()
+res_cpt1_1 %>% 
+  unnest() %>% 
+  View()
+res_cpt1_1 <- res_cpt1_1 %>%
+  mutate(res = map(fits, runs1_13)) %>%
+  unnest(res) 
+
+ress11 <- cptdata %>% ##for the whole dataset 
+  do(fits = rerun(6, nlminb(get_start_values1_1(), wrapper1_1,
+                            df = ., lower = c(0, 0, 0), 
+                            upper = c(3, 10, Inf))) %>%
+       map_dfr(~as_tibble(cbind(t(.$par),
+                                logLik = -.$objective,
+                                convergence = .$convergence)))) %>%
+  unnest() 
+ress11 <- ress11 %>% do(runs1_13(ress11))
+
+##VERSION 2
+res_cpt1_2 <- cptdata %>%
+  group_by(id) %>% ##individual-level
+  do(fits = rerun(6, nlminb(get_start_values1_2(), wrapper1_2, df = .,
+                            lower = c(0, 0, 0, 0), upper = c(3, 3, 10, Inf))) %>%
+       map_dfr(~as_tibble(cbind(t(.$par),
+                                logLik = -.$objective,
+                                convergence = .$convergence)))) %>% 
+  ungroup()
+res_cpt1_2 %>% 
+  unnest() %>% 
+  View()
+res_cpt1_2 <- res_cpt1_2 %>%
+  mutate(res = map(fits, runs1_2)) %>%
+  unnest(res) 
+
+ress12 <- cptdata %>% ##for the whole dataset
+  do(fits = rerun(6, nlminb(get_start_values1_2(), wrapper1_2, 
+                            df = ., lower = c(0, 0, 0, 0), 
+                            upper = c(3, 3, 10, Inf))) %>%
+       map_dfr(~as_tibble(cbind(t(.$par),
+                                logLik = -.$objective,
+                                convergence = .$convergence)))) %>%
+  unnest() 
+ress12 <- ress12 %>% do(runs1_2(ress12))
+
+##VERSION 3
+res_cpt1_3 <- cptdata %>%
+  group_by(id) %>% ##individual-level
+  do(fits = rerun(6, nlminb(get_start_values1_3(), wrapper1_3, df = .,
+                            lower = c(0, 0, 0), 
+                            upper = c(3, 3, Inf))) %>%
+       map_dfr(~as_tibble(cbind(t(.$par),
+                                logLik = -.$objective,
+                                convergence = .$convergence)))) %>% 
+  ungroup()
+res_cpt1_3 %>% 
+  unnest() %>% 
+  View()
+res_cpt1_3 <- res_cpt1_3 %>%
+  mutate(res = map(fits, runs1_13)) %>%
+  unnest(res) 
+
+ress13 <- cptdata %>% ##for the whole dataset
+  do(fits = rerun(6, nlminb(get_start_values1_3(), wrapper1_3, 
+                            df = ., lower = c(0, 0, 0), 
+                            upper = c(3, 3, Inf))) %>%
+       map_dfr(~as_tibble(cbind(t(.$par),
+                                logLik = -.$objective,
+                                convergence = .$convergence)))) %>%
+  unnest() 
+ress13 <- ress13 %>% do(runs1_13(ress13))
+
+#EXTENDED MODEL
+##VERSION 1
+res_cpt2_1 <- cptdata %>%
+  group_by(id) %>% ##individual-level
+  do(fits = rerun(6, nlminb(get_start_values2_1(), wrapper2_1, df = .,
+                            lower = c(0, 0, 0, 0, 0), 
+                            upper = c(3, 10, 1, 1, Inf))) %>%
+       map_dfr(~as_tibble(cbind(t(.$par),
+                                logLik = -.$objective,
+                                convergence = .$convergence)))) %>% 
+  ungroup()
+res_cpt2_1 %>% 
+  unnest() %>% 
+  View()
+res_cpt2_1 <- res_cpt2_1 %>%
+  mutate(res = map(fits, runs2_13)) %>%
+  unnest(res)
+
+ress21 <- cptdata %>% ##for the whole dataset
+  do(fits = rerun(6, nlminb(get_start_values2_1(), wrapper2_1, 
+                            df = ., lower = c(0, 0, 0, 0, 0), 
+                            upper = c(3, 10, 1, 1, Inf))) %>%
+       map_dfr(~as_tibble(cbind(t(.$par),
+                                logLik = -.$objective,
+                                convergence = .$convergence)))) %>%
+  unnest() 
+ress21 <- ress21 %>% do(runs2_13(ress21))
+
+##VERSION 2
+res_cpt2_2 <- cptdata %>%
+  group_by(id) %>% ##individual-level
+  do(fits = rerun(6, nlminb(get_start_values2_2(), wrapper2_2, df = .,
+                            lower = c(0, 0, 0, 0, 0, 0), 
+                            upper = c(3, 3, 10, 1, 1, Inf))) %>%
+       map_dfr(~as_tibble(cbind(t(.$par),
+                                logLik = -.$objective,
+                                convergence = .$convergence)))) %>%
+  ungroup() 
+res_cpt2_2 %>% 
+  unnest() %>% 
+  View()
+res_cpt2_2 <- res_cpt2_2 %>%
+  mutate(res = map(fits, runs2_2)) %>%
+  unnest(res) 
+
+ress22 <- cptdata %>% ##for the whole dataset
+  do(fits = rerun(6, nlminb(get_start_values2_2(), wrapper2_2, 
+                            df = ., lower = c(0, 0, 0, 0, 0, 0), 
+                            upper = c(3, 3, 10, 1, 1, Inf))) %>%
+       map_dfr(~as_tibble(cbind(t(.$par),
+                                logLik = -.$objective,
+                                convergence = .$convergence)))) %>%
+  unnest() 
+ress22 <- ress22 %>% do(runs2_2(ress22))
+
+##VERSION 3
+res_cpt2_3 <- cptdata %>%
+  group_by(id) %>% ##individual-level
+  do(fits = rerun(6, nlminb(get_start_values2_3(), wrapper2_3, df = .,
+                            lower = c(0, 0, 0, 0, 0), 
+                            upper = c(3, 3, 1, 1, Inf))) %>%
+       map_dfr(~as_tibble(cbind(t(.$par),
+                                logLik = -.$objective,
+                                convergence = .$convergence)))) %>%
+  ungroup() 
+res_cpt2_3 %>% 
+  unnest() %>% 
+  View()
+res_cpt2_3 <- res_cpt2_3 %>%
+  mutate(res = map(fits, runs2_13)) %>%
+  unnest(res) 
+
+ress23 <- cptdata %>% ##for the whole dataset
+  do(fits = rerun(6, nlminb(get_start_values2_3(), wrapper2_3, 
+                            df = ., lower = c(0, 0, 0, 0, 0), 
+                            upper = c(3, 3, 1, 1, Inf))) %>%
+       map_dfr(~as_tibble(cbind(t(.$par),
+                                logLik = -.$objective,
+                                convergence = .$convergence)))) %>%
+  unnest() 
+ress23 <- ress23 %>% do(runs2_13(ress23))
+
+#EU MODEL (FOR LIKELIHOOD RATIO TEST)
+wrapper_eu <- function(par, df) {
+  ll_cpt(par[1], par[1], 1, 1, 1, par[2], df)
+}
+get_start_values_eu <- function() {
+  c(alpha = runif(1, 0, 1), phi = runif(1, 0, 1))
+}
+runs_eu <- function(data) {
+  mle <- data[which.max(data$logLik), 1:4]  
+  which_max <- which(round(max(data$logLik), 3) == round(data$logLik, 3))
+  which_max <- which_max[which_max != which.max(data$logLik)]
+  mlenew <- mle
+  mlenew[abs(mle - data[which_max[1], 1:4]) > 0.01] <- NA
+  mlenew
+}
+ress_eu <- cptdata %>% ##for the whole dataset 
+  do(fits = rerun(6, nlminb(get_start_values_eu(), wrapper_eu,
+                            df = ., lower = c(0, 0), 
+                            upper = c(3, Inf))) %>%
+       map_dfr(~as_tibble(cbind(t(.$par),
+                                logLik = -.$objective,
+                                convergence = .$convergence)))) %>%
+  unnest() 
+ress_eu <- ress_eu %>% do(runs_eu(ress_eu))
+```
+```{r dd}
+#save(res_cpt1_1, file = "res_cpt1_1.rda")
+load(file = "res_cpt1_1.rda")
+any(is.na(res_cpt1_1)) ##check if there is any bad results
+res_cpt1_1
+#save(ress11, file = "ress11.rda")
+load(file = "ress11.rda")
+ress11
+
+#save(res_cpt1_2, file = "res_cpt1_2.rda")
+load(file = "res_cpt1_2.rda")
+any(is.na(res_cpt1_2))
+res_cpt1_2
+#save(ress12, file = "ress12.rda")
+load(file = "ress12.rda")
+ress12
+
+#save(res_cpt1_3, file = "res_cpt1_3.rda")
+load(file = "res_cpt1_3.rda")
+any(is.na(res_cpt1_3))
+res_cpt1_3
+#save(ress13, file = "ress13.rda")
+load(file = "ress13.rda")
+ress13
+
+#save(res_cpt2_1, file = "res_cpt2_1.rda")
+load(file = "res_cpt2_1.rda")
+any(is.na(res_cpt2_1))
+res_cpt2_1
+#save(ress21, file = "ress21.rda")
+load(file = "ress21.rda")
+ress21
+
+#save(res_cpt2_2, file = "res_cpt2_2.rda")
+load(file = "res_cpt2_2.rda")
+any(is.na(res_cpt2_2))
+res_cpt2_2
+#save(ress22, file = "ress22.rda")
+load(file = "ress22.rda")
+ress22
+
+#save(res_cpt2_3, file = "res_cpt2_3.rda")
+load(file = "res_cpt2_3.rda")
+any(is.na(res_cpt2_3))
+res_cpt2_3
+#save(ress23, file = "ress23.rda")
+load(file = "ress23.rda")
+ress23
+
+#save(ress_eu, file = "ress_eu.rda")
+load(file = "ress_eu.rda")
+ress_eu
+```
+
+```{r e}
+#########################################################################################
+#                                   FITTING ANALYSIS                                    #
+#########################################################################################
+#CHECK MLE 
+#res_cpt1_1 %>% ##replace with res_cpt1_2, res_cpt1_3, res_cpt2_1, res_cpt2_2, res_cpt2_3
+#  unnest(fits) %>%
+#  group_by(id) %>%
+#  mutate(logLik = round(logLik, 4)) %>%
+#  summarise(found_best = sum(logLik == max(logLik))) %>%
+#  ggplot(aes(found_best)) +
+#  geom_bar() +
+#  scale_x_continuous(breaks = 1:10)
+##no concerning issues
+
+#MEDIAN POINT ESTIMATE
+memad <- function(data, bx, lx, gdx) {
+  stat <- c("median", "mad")
+  alpha <- c(round(median(data$alpha), 2), round(mad(data$alpha), 2))
+  beta <- if(bx == 1) {
+    c(round(median(data$beta), 2), round(mad(data$beta), 2))
+  } else if (bx == 0) {
+    c("NA", "NA")
+  } 
+  lambda <- if(lx == 1) {
+    c(round(median(data$lambda), 2), round(mad(data$lambda), 2))
+  } else if (lx == 0) {
+    c("NA", "NA")
+  }
+  if (gdx == 1) {
+    gamma <- c(round(median(data$gamma), 2), round(mad(data$gamma), 2))
+    delta <- c(round(median(data$delta), 2), round(mad(data$delta), 2))
+  } else if (gdx == 0) {
+    gamma <- c("NA", "NA")
+    delta <- c("NA", "NA")
+  }
+  phi <- c(round(median(data$phi), 2), round(mad(data$phi), 2))
+  cbind(stat, alpha, beta, lambda, gamma, delta, phi)
+}
+##SIMPLE MODEL
+memad(res_cpt1_1, 0, 1, 0) ##version 1 
+memad(res_cpt1_2, 1, 1, 0) ##version 2 
+memad(res_cpt1_3, 1, 0, 0) ##version 3 
+##EXTENDED MODEL
+memad(res_cpt2_1, 0, 1, 1) ##version 1 
+memad(res_cpt2_2, 1, 1, 1) ##version 2 
+memad(res_cpt2_3, 1, 0, 1) ##version 3 
+
+#MODEL FITS
+##MODEL PREDICTION
+sumpre <- function(data, y) {
+  prediction <- function(data, x, y) {
+    if (y == 1) {
+      beta <- data$alpha[data$id == x]
+      lambda <- data$lambda[data$id == x]
+    } else if (y == 2) {
+      beta <- data$beta[data$id == x]
+      lambda <- data$lambda[data$id == x]
+    } else if (y == 3) {
+      beta <- data$beta[data$id == x]
+      lambda <- 1
+    }
+    pre <- gamble %>% 
+      rowwise() %>% 
+      mutate(p = logit_f(A1_payoff, A2_payoff, A1_prob, 
+                         B1_payoff, B2_payoff, B1_prob,
+                         data$alpha[data$id == x], 
+                         beta, lambda, 
+                         data$gamma[data$id == x], 
+                         data$delta[data$id == x], 
+                         data$phi[data$id == x]))
+    pre$id <- x
+    pre <- pre %>% select(id, p)
+    return(pre)
+  }
+  b <- rbind(prediction(data, 1, y), prediction(data, 2, y), prediction(data, 3, y), 
+             prediction(data, 4, y), prediction(data, 5, y), prediction(data, 6, y), 
+             prediction(data, 7, y), prediction(data, 8, y), prediction(data, 9, y), 
+             prediction(data, 10, y), prediction(data, 11, y), prediction(data, 12, y), 
+             prediction(data, 13, y), prediction(data, 14, y), prediction(data, 15, y), 
+             prediction(data, 16, y), prediction(data, 17, y), prediction(data, 18, y), 
+             prediction(data, 19, y), prediction(data, 20, y), prediction(data, 21, y), 
+             prediction(data, 22, y), prediction(data, 23, y), prediction(data, 24, y), 
+             prediction(data, 25, y), prediction(data, 26, y), prediction(data, 27, y), 
+             prediction(data, 28, y), prediction(data, 29, y), prediction(data, 30, y))
+  return(b)
+}
+
+b_probs1 <- sumpre(res_cpt2_1, 1)
+b_probs1$Version <- 1
+b_probs2 <- sumpre(res_cpt2_2, 2)
+b_probs2$Version <- 2
+b_probs3 <- sumpre(res_cpt2_3, 3)
+b_probs3$Version <- 3
+average_p <- rbind(b_probs1, b_probs2, b_probs3) %>% 
+  ungroup() %>% 
+  group_by(id, Version) %>% 
+  summarise(pr = mean(p)) %>% 
+  arrange(-desc(Version))
+
+average <- cptdata %>% 
+  arrange(-desc(id)) %>% 
+  group_by(id) %>% 
+  summarise(p1 = mean(choice), 
+            p2 = mean(choice), 
+            p3 = mean(choice)) 
+average <- rbind(average[1,], average[12,], average[23,], average[25:30,], 
+                 average[2:11,], average[13:22,], average[24,])
+average <- average %>% 
+  gather(Version, p, p1:p3) 
+
+average_p$id1 <- average$id
+average_p$p <- average$p
+average_p$Version1 <- average$Version
+```
+```{r ee, fig.align='center', fig.height=4, fig.width=12, message=FALSE, warning=FALSE}
+ggscatter(average_p, x = "p", y = "pr") + facet_grid(~ Version) +
+  xlab("Choice proportion") + ylab("Prediction") +
+  geom_abline(slope = 1) + 
+  stat_cor(aes(label = paste(..rr.label.., ..p.label.., sep = "~`,`~")))
+```
+```{r eeff, message=FALSE, eval=FALSE}
+##PARAMETER VALUES
+par(mfrow = c(2, 3))
+x <- seq(0, 1, .01)
+y <- sapply(x, ll_cpt, beta = ress22$beta, lambda = ress22$lambda, gamma = ress22$gamma, 
+            delta = ress22$delta, phi = ress22$phi, df = cptdata)
+plot(-y ~ x, xlab = "Alpha", ylab = "Loglikelihood", ylim = c(-4000, -3000))
+##Effect of varying alpha
+
+m <- seq(0, 1.5, .01)
+n <- sapply(m, ll_cpt, alpha = ress22$alpha, lambda = ress22$lambda, gamma = ress22$gamma, 
+            delta = ress22$delta, phi = ress22$phi, df = cptdata)
+plot(-n ~ m, xlab = "Beta", ylab = "Loglikelihood", ylim = c(-4000, -3000)) 
+##Effect of varying beta
+
+o <- seq(0, 1, .01)
+p <- sapply(o, ll_cpt, alpha = ress22$alpha, beta = ress22$beta, gamma = ress22$gamma, 
+            delta = ress22$delta, phi = ress22$phi, df = cptdata)
+plot(-p ~ o, xlab = "Lambda", ylab = "Loglikelihood", ylim = c(-4000, -3000)) 
+##Effect of varying lambda
+
+r <- seq(0, 1, .01)
+s <- sapply(r, ll_cpt, alpha = ress22$alpha, beta = ress22$beta, lambda = ress22$lambda, 
+            delta = ress22$delta, phi = ress22$phi, df = cptdata)
+plot(-s ~ r, xlab = "Gamma", ylab = "Loglikelihood", ylim = c(-4000, -3000)) 
+##Effect of varying gamma
+
+u <- seq(0, 1, .01)
+v <- sapply(u, ll_cpt, alpha = ress22$alpha, beta = ress22$beta, lambda = ress22$lambda, 
+            gamma = ress22$gamma, phi = ress22$phi, df = cptdata)
+plot(-y ~ x, xlab = "Delta", ylab = "Loglikelihood", ylim = c(-4000, -3000)) 
+##Effect of varying delta
+
+a <- seq(0, 0.5, .01)
+b <- sapply(a, ll_cpt, alpha = ress22$alpha, beta = ress22$beta, lambda = ress22$lambda, 
+            gamma = ress22$gamma, delta = ress22$delta, df = cptdata)
+plot(-b ~ a, xlab = "Phi", ylab = "Loglikelihood", ylim = c(-4000, -3000)) 
+##Effect of varying phi
+```
+```{r jka, message=FALSE, eval=FALSE}
+jk <- recordPlot()
+```
+```{r eee}
+#LILELIHOOD RATIO TEST 
+ll_ratio <- function(m1, m2) {
+  teststat <- -2*(sum(as.numeric(m1$logLik)) - sum(as.numeric(m2$logLik)))
+  pv <- pchisq(teststat, df = abs(ncol(m2) - ncol(m1)), lower.tail = FALSE)
+  chi_pv <- c(chi_value = round(teststat, 4), p_value = round(pv, 6))
+  return(chi_pv)
+}
+
+##WITHIN-MODEL COMPARISON 
+ll_ratio(ress11, ress12)
+ll_ratio(ress13, ress12)
+ll_ratio(ress21, ress22)
+ll_ratio(ress23, ress22)
+##BETWEEN-MODEL COMPARISON
+ll_ratio(ress_eu, ress11)
+ll_ratio(ress_eu, ress12)
+ll_ratio(ress_eu, ress13)
+ll_ratio(ress_eu, ress21)
+ll_ratio(ress_eu, ress22)
+ll_ratio(ress_eu, ress23)
+ll_ratio(ress11, ress21)
+ll_ratio(ress12, ress22)
+ll_ratio(ress13, ress23)
+##can also use the individual-level data, the significance of the results are the same
+##for instance, ll_ratio(res_cpt1_1, res_cpt1_2)
+
+#CORRELATIONS AMONG PARAMETERS
+res_cpt2_1$Version <- 1
+res_cpt2_1$beta <- NA
+res_cpt2_2$Version <- 2
+res_cpt2_3$Version <- 3
+res_cpt2_3$lambda <- NA
+res <- rbind(res_cpt2_1, res_cpt2_2, res_cpt2_3) %>% 
+  mutate(Version = as.factor(Version))
+
+co1 <- ggscatter(res, x = "alpha", y = "phi", add = "reg.line") +
+  stat_cor(aes(label = paste(..rr.label.., ..p.label.., sep = "~`,`~"))) + 
+  facet_grid(~ Version) +
+  xlab("Alpha") +
+  ylab("Bias")
+co2 <- ggscatter(res, x = "beta", y = "phi", add = "reg.line") +
+  stat_cor(aes(label = paste(..rr.label.., ..p.label.., sep = "~`,`~"))) +
+  facet_grid(~ Version) +
+  xlab("Beta") +
+  ylab("Bias")
+co3 <- ggscatter(res, x = "gamma", y = "phi", add = "reg.line") +
+  stat_cor(aes(label = paste(..rr.label.., ..p.label.., sep = "~`,`~"))) +
+  facet_grid(~ Version) +
+  xlab("Gamma") +
+  ylab("Bias")
+co4 <- ggscatter(res, x = "delta", y = "phi", add = "reg.line") +
+  stat_cor(aes(label = paste(..rr.label.., ..p.label.., sep = "~`,`~"))) +
+  facet_grid(~ Version) +
+  xlab("Delta") +
+  ylab("Bias")
+co5 <- ggscatter(res, x = "alpha", y = "beta", add = "reg.line") +
+  stat_cor(aes(label = paste(..rr.label.., ..p.label.., sep = "~`,`~"))) +
+  facet_grid(~ Version) +
+  xlab("Alpha") +
+  ylab("Beta")
+co6 <- ggscatter(res, x = "gamma", y = "delta", add = "reg.line") +
+  stat_cor(aes(label = paste(..rr.label.., ..p.label.., sep = "~`,`~"))) +
+  facet_grid(~ Version) +
+  xlab("Gamma") +
+  ylab("Delta")
+```
+```{r eeee, fig.align='center', fig.height=10, fig.width=23, message=FALSE, warning=FALSE}
+plot_grid(co1, co2, co3, co4, co5, co6, labels = "auto", ncol = 3)
+```
+
+```{r f, message=FALSE, eval=FALSE}
+#########################################################################################
+#                                     MODEL RECOVERY                                    #
+#########################################################################################
+#GENERATE PREDICTION (EXTENDED MODEL)
+cptdata <- cptdata %>% 
+  rowwise() %>% 
+  mutate(logit2_1 = logit_f(A1_payoff, A2_payoff, A1_prob, 
+                            B1_payoff, B2_payoff, B1_prob, 
+                            alpha = median(res_cpt2_1$alpha), 
+                            beta = median(res_cpt2_1$alpha),
+                            lambda = median(res_cpt2_1$lambda), 
+                            gamma = median(res_cpt2_1$gamma), 
+                            delta = median(res_cpt2_1$delta), 
+                            phi = median(res_cpt2_2$phi)), 
+         logit2_2 = logit_f(A1_payoff, A2_payoff, A1_prob, 
+                            B1_payoff, B2_payoff, B1_prob, 
+                            alpha = median(res_cpt2_2$alpha), 
+                            beta = median(res_cpt2_2$beta), 
+                            lambda = median(res_cpt2_2$lambda), 
+                            gamma = median(res_cpt2_2$gamma), 
+                            delta = median(res_cpt2_2$delta), 
+                            phi = median(res_cpt2_2$phi)), 
+         logit2_3 = logit_f(A1_payoff, A2_payoff, A1_prob, 
+                            B1_payoff, B2_payoff, B1_prob, 
+                            alpha = median(res_cpt2_3$alpha), 
+                            lambda = 1, 
+                            beta = median(res_cpt2_3$beta), 
+                            gamma = median(res_cpt2_3$gamma), 
+                            delta = median(res_cpt2_3$delta), 
+                            phi = median(res_cpt2_3$phi)))
+
+decision_generator <- function(probability) {
+  prob <- runif(1, min = 0, max = 1)
+  choice <- ifelse(probability <= prob, 0, 1)
+}
+
+cptdata$s_response21 <- sapply(X = cptdata$logit2_1, FUN = decision_generator, 
+                               simplify = TRUE)
+cptdata$s_response22 <- sapply(X = cptdata$logit2_2, FUN = decision_generator, 
+                               simplify = TRUE)
+cptdata$s_response23 <- sapply(X = cptdata$logit2_3, FUN = decision_generator, 
+                               simplify = TRUE)
+
+#REFIT MODEL
+##VERSION 1
+ll_cpt <- function(alpha, beta, lambda, gamma, delta, phi, df) {
+  pd <- rowwise(df) %>% summarise(l = logit_f(A1_payoff, A2_payoff, A1_prob,
+                                              B1_payoff, B2_payoff, B1_prob, 
+                                              alpha, beta, lambda, gamma, delta, 
+                                              phi))
+  pb <- as.vector(pd$l, mode = "numeric")
+  density <- vector("numeric", length(df$s_response21))
+  density[df$s_response21 == 0] <- 1 - pb[df$s_response21 == 0]
+  density[df$s_response21 == 1] <- pb[df$s_response21 == 1]
+  if (any(density == 0)) {
+    return(1e6)
+  } else {
+    return(-sum(log(density)))
+  }
+}
+
+res_cpt2_1r <- cptdata %>%
+  group_by(id) %>% 
+  do(fits = rerun(6, nlminb(get_start_values2_1(), wrapper2_1, df = .,
+                            lower = c(0, 0, 0, 0, 0), 
+                            upper = c(3, 10, 1, 1, Inf))) %>%
+       map_dfr(~as_tibble(cbind(t(.$par),
+                                logLik = -.$objective,
+                                convergence = .$convergence)))) %>% 
+  ungroup()
+res_cpt2_1r %>% 
+  unnest() %>% 
+  View()
+res_cpt2_1r <- res_cpt2_1r %>%
+  mutate(res = map(fits, runs2_13)) %>%
+  unnest(res) %>% 
+  mutate(alpha_r = alpha, 
+         lambda_r = lambda, 
+         gamma_r = gamma, 
+         delta_r = delta, 
+         phi_r = phi)
+
+##VERSION 2
+ll_cpt <- function(alpha, beta, lambda, gamma, delta, phi, df) {
+  pd <- rowwise(df) %>% summarise(l = logit_f(A1_payoff, A2_payoff, A1_prob,
+                                              B1_payoff, B2_payoff, B1_prob, 
+                                              alpha, beta, lambda, gamma, delta, 
+                                              phi))
+  pb <- as.vector(pd$l, mode = "numeric")
+  density <- vector("numeric", length(df$s_response22))
+  density[df$s_response22 == 0] <- 1 - pb[df$s_response22 == 0]
+  density[df$s_response22 == 1] <- pb[df$s_response22 == 1]
+  if (any(density == 0)) {
+    return(1e6)
+  } else {
+    return(-sum(log(density)))
+  }
+}
+
+res_cpt2_2r <- cptdata %>%
+  group_by(id) %>% 
+  do(fits = rerun(6, nlminb(get_start_values2_2(), wrapper2_2, df = .,
+                            lower = c(0, 0, 0, 0, 0, 0), 
+                            upper = c(3, 3, 10, 1, 1, Inf))) %>%
+       map_dfr(~as_tibble(cbind(t(.$par),
+                                logLik = -.$objective,
+                                convergence = .$convergence)))) %>% 
+  ungroup()
+res_cpt2_2r %>% 
+  unnest() %>% 
+  View()
+res_cpt2_2r <- res_cpt2_2r %>%
+  mutate(res = map(fits, runs2_2)) %>%
+  unnest(res) %>% 
+  mutate(alpha_r = alpha, 
+         beta_r = beta,
+         lambda_r = lambda, 
+         gamma_r = gamma, 
+         delta_r = delta, 
+         phi_r = phi)
+
+##VERSION 3
+ll_cpt <- function(alpha, beta, lambda, gamma, delta, phi, df) {
+  pd <- rowwise(df) %>% summarise(l = logit_f(A1_payoff, A2_payoff, A1_prob,
+                                              B1_payoff, B2_payoff, B1_prob, 
+                                              alpha, beta, lambda, gamma, delta, 
+                                              phi))
+  pb <- as.vector(pd$l, mode = "numeric")
+  density <- vector("numeric", length(df$s_response23))
+  density[df$s_response23 == 0] <- 1 - pb[df$s_response23 == 0]
+  density[df$s_response23 == 1] <- pb[df$s_response23 == 1]
+  if (any(density == 0)) {
+    return(1e6)
+  } else {
+    return(-sum(log(density)))
+  }
+}
+
+res_cpt2_3r <- cptdata %>%
+  group_by(id) %>% 
+  do(fits = rerun(6, nlminb(get_start_values2_3(), wrapper2_3, df = .,
+                            lower = c(0, 0, 0, 0, 0), 
+                            upper = c(3, 3, 1, 1, Inf))) %>%
+       map_dfr(~as_tibble(cbind(t(.$par),
+                                logLik = -.$objective,
+                                convergence = .$convergence)))) %>% 
+  ungroup()
+res_cpt2_3r %>% 
+  unnest() %>% 
+  View()
+res_cpt2_3r <- res_cpt2_3r %>%
+  mutate(res = map(fits, runs2_13)) %>%
+  unnest(res) %>% 
+  mutate(alpha_r = alpha, 
+         beta_r = beta,
+         gamma_r = gamma, 
+         delta_r = delta, 
+         phi_r = phi)
+```
+```{r ff}
+#save(res_cpt2_1r, file = "res_cpt2_1r.rda")
+load(file = "res_cpt2_1r.rda")
+any(is.na(res_cpt2_1r))
+res_cpt2_1r
+
+#save(res_cpt2_2r, file = "res_cpt2_2r.rda")
+load(file = "res_cpt2_2r.rda")
+any(is.na(res_cpt2_2r))
+res_cpt2_2r
+
+#save(res_cpt2_3r, file = "res_cpt2_3r.rda")
+load(file = "res_cpt2_3r.rda")
+any(is.na(res_cpt2_3r))
+res_cpt2_3r
+```
+
+```{r g}
+#########################################################################################
+#                                   RECOVERY ANALYSIS                                   #
+#########################################################################################
+#CHECK MLE 
+#res_cpt2_1r %>% ##replace with res_cpt2_2r, res_cpt2_3r
+#  unnest(fits) %>%
+#  group_by(id) %>%
+#  mutate(logLik = round(logLik, 4)) %>%
+#  summarise(found_best = sum(logLik == max(logLik))) %>%
+#  ggplot(aes(found_best)) +
+#  geom_bar() +
+#  scale_x_continuous(breaks = 1:10)
+##no concerning issues
+
+#MEDIAN POINT ESTIMATE (EXTENDED MODEL)
+res_cpt2_1r %>% 
+  summarise(alpha = median(alpha_r),
+            lambda = median(lambda_r), 
+            gamma = median(gamma_r), 
+            delta = median(delta_r), 
+            phi = median(phi_r))
+res_cpt2_2r %>% 
+  summarise(alpha = median(alpha_r), 
+            beta = median(beta_r), 
+            lambda = median(lambda_r), 
+            gamma = median(gamma_r), 
+            delta = median(delta_r), 
+            phi = median(phi_r))
+res_cpt2_3r %>% 
+  summarise(alpha = median(alpha_r), 
+            beta = median(beta_r), 
+            gamma = median(gamma_r), 
+            delta = median(delta_r), 
+            phi = median(phi_r))
+
+#PARAMETER RECOVERY (EXTENDED MODEL)
+aa <- cbind(res_cpt2_1, res_cpt2_1r) %>% 
+  subset(., select = which(!duplicated(names(.)))) 
+bb <- cbind(res_cpt2_2, res_cpt2_2r) %>% 
+  subset(., select = which(!duplicated(names(.)))) 
+cc <- cbind(res_cpt2_3, res_cpt2_3r) %>% 
+  subset(., select = which(!duplicated(names(.)))) 
+
+qq <- function(data, x) {
+  q1 <- ggplot(data) + 
+    geom_line(aes(x = alpha), stat = "density") +
+    geom_line(aes(x = alpha_r), stat = "density", linetype = "dotted") + 
+    geom_line(aes(x = beta, color = ""), stat = "density") +
+    geom_line(aes(x = beta_r, color = "gw"), stat = "density", linetype = "dotted") +
+    xlab("") + ylab("Density") + ggtitle("Alpha and Beta") + 
+    geom_vline(xintercept = median(data$alpha)) +
+    geom_vline(xintercept = median(data$beta), color = "#990000") +
+    scale_color_manual(values = c("#990000", "#990000")) 
+  q1 <- q1 %>%
+    ggpar(legend.title = " ", legend = "none") +
+    theme(axis.text.y = element_blank(),
+          axis.ticks = element_blank())
+  q2 <- ggplot(data) + 
+    geom_line(aes(x = lambda), stat = "density") +
+    geom_line(aes(x = lambda_r), stat = "density", linetype = "dotted") + 
+    xlab("") + ylab("Density") + ggtitle("Lambda") +
+    geom_vline(xintercept = median(data$lambda)) +
+    theme(axis.text.y = element_blank(),
+          axis.ticks = element_blank())
+  q3 <- ggplot(data) + 
+    geom_line(aes(x = gamma), stat = "density") +
+    geom_line(aes(x = gamma_r), stat = "density", linetype = "dotted") + 
+    geom_line(aes(x = delta, color = ""), stat = "density") +
+    geom_line(aes(x = delta_r, color = "gw"), stat = "density", linetype = "dotted") + 
+    xlab("") + ylab("Density") + ggtitle("Gamma and Delta") +
+    geom_vline(xintercept = median(data$gamma)) +
+    geom_vline(xintercept = median(data$delta), color = "#990000") +
+    scale_color_manual(values = c("#990000", "#990000")) 
+  q3 <- q3 %>%
+    ggpar(legend.title = " ", legend = "none") +
+    theme(axis.text.y = element_blank(),
+          axis.ticks = element_blank())
+  ylab("Density") 
+  q4 <- ggplot(data) + 
+    geom_line(aes(x = phi), stat = "density") +
+    geom_line(aes(x = phi_r), stat = "density", linetype = "dotted") + 
+    xlab("") + ylab("Density") + ggtitle("Phi") +
+    geom_vline(xintercept = median(data$phi)) +
+    theme(axis.text.y = element_blank(),
+          axis.ticks = element_blank())
+  if (x == 1) {
+    q1 <- ggplot(data) + 
+      geom_line(aes(x = alpha), stat = "density") +
+      geom_line(aes(x = alpha_r), stat = "density", linetype = "dotted") + 
+      xlab("") + ylab("Density") + ggtitle("Alpha") + 
+      geom_vline(xintercept = median(data$alpha)) + 
+      theme(axis.text.y = element_blank(),
+            axis.ticks = element_blank())
+    plot_grid(q1 + ylim(0, 6), q3 + ylim(0, 6), 
+              q4 + ylim(0, 6), q2 + ylim(0, 6), ncol = 4)
+  } else if (x == 2) {
+    plot_grid(q1 + ylim(0, 4.5), q3 + ylim(0, 4.5),
+              q4 + ylim(0, 4.5), q2 + ylim(0, 4.5), ncol = 4)
+  } else {
+    plot_grid(q1 + ylim(0, 6), q3 + ylim(0, 6), q4 + ylim(0, 6), ncol = 4)
+  }
+}
+```
+```{r gg, message=FALSE, eval=FALSE}
+plot_grid(qq(aa, 1), qq(bb, 2), qq(cc, 3), ncol = 1, labels = "auto")
+```
+
+

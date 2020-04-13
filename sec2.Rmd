@@ -1,0 +1,1214 @@
+---
+title: ""
+author: ''
+date: ""
+output: pdf_document
+fontsize: 10pt
+editor_options: 
+  chunk_output_type: console
+---
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+# Section 2
+```{r pre, message=FALSE, warning=FALSE}
+library("rtdists")
+library("tidyverse")
+library("afex")
+library("emmeans")
+library("car")
+library("ggpubr")
+library("cowplot")
+theme_set(theme_bw(base_size = 15) +
+            theme(legend.position = "bottom",
+                  panel.grid.major.x = element_blank(),
+                  panel.grid.minor.x = element_blank()))
+set_sum_contrasts()
+```
+
+```{r data}
+#LOAD DATA
+med <- read_csv("medical_dm.csv")
+glimpse(med)
+med <- remove_missing(med) #Delete the missing values in dataset
+
+#ORGANIZE DATA FOR DM MODEL
+mednew <- med %>%
+  mutate(id = as.factor(id),
+         group = recode_factor(group, "experienced" = "Expert", 
+                               "inexperienced" = "Expert", 
+                               "novice" = "Novice"), 
+         block = as.factor(block), 
+         trial = as.factor(trial),
+         classification = as.factor(classification), 
+         difficulty = factor(difficulty, c("easy", "hard"), c("Easy", "Hard")),
+         response = as.factor(response)) %>%
+  mutate(response = factor(response, c("non-blast", "blast"),
+                           c( "lower", "upper")))
+str(mednew)
+
+#CUT OFF THE OUTLIERS
+mednew %>% 
+  group_by(id, group) %>%
+  summarise(n = n()) 
+mednew %>%
+  group_by(group, classification, difficulty) %>%
+  summarise(sum(rt >= 2.5 | rt <= 0.25)/sum(rt)) 
+#No major problem of the data if we do the cut-off
+mednew <- mednew %>%
+  filter(.$rt <= 2.5 & .$rt >= 0.25) #Trim off the outliers
+mednew %>% 
+  group_by(id, group) %>%
+  summarise(n = n())  
+#No major problem of the data after elimination
+```
+
+```{r ll}
+#LIKELIHOOD MODEL FOR THE SIMPLE MODEL
+ll_diffusion <- function(pars, rt, response, drift, ...) {
+  densities <- vector("numeric", length(rt))
+  for (i in 1:2) {
+    densities[drift == levels(drift)[i]] <- 
+      ddiffusion(rt = rt[drift == levels(drift)[i]], 
+                 response = response[drift == levels(drift)[i]], 
+                 a = pars["a"], 
+                 t0 = pars["t0"], 
+                 z = pars["z"],
+                 sv = pars["sv"],
+                 st0 = pars["st0"], 
+                 v = pars[5 + i])
+  }
+  if (any(densities == 0)) {
+    return(1e6)
+  } else {
+    return(-sum(log(densities)))
+  }
+}
+
+#GENERATE START VALUES
+get_start_values <- function() {
+  c(a = runif(1, 0.5, 3),
+    t0 = runif(1, 0, 0.5), 
+    z = runif(1, 0.4, 0.6), 
+    sv = runif(1, 0, 0.5),
+    st0 = runif(1, 0, 0.5), 
+    v1 = rnorm(1, 0, 2), 
+    v2 = rnorm(1, 0, 2)
+  )
+}
+
+#GENERATE PARAMETER VALUES
+runs <- function(data) {
+  mle <- data[which.max(data$logLik), 1:7]
+  which_max <- which(round(max(data$logLik), 3) == round(data$logLik, 3))
+  which_max <- which_max[which_max != which.max(data$logLik)]
+  mlenew <- mle
+  mlenew[abs(mle - data[which_max[1], 1:7]) > 0.01] <- NA
+  mlenew
+}
+```
+```{r sagd, message=FALSE, eval=FALSE}
+res_med <- mednew %>%
+  group_by(id, group) %>%
+  do(fits = rerun(5, nlminb(get_start_values(), ll_diffusion,
+                            rt = .$rt, response = .$response, 
+                            drift = .$classification,
+                            lower = c(0, 0, 0, 0, 0, -Inf, -Inf))) %>%
+       map_dfr(~as_tibble(cbind(t(.$par),
+                                logLik = -.$objective,
+                                convergence = .$convergence)))) %>%
+  mutate(a = round(as.numeric(runs(fits)[1]), 2), 
+         t0 = round(as.numeric(runs(fits)[2]), 3), 
+         z = round(as.numeric(runs(fits)[3]), 2),
+         sv = round(as.numeric(runs(fits)[4]), 2), 
+         st0 = round(as.numeric(runs(fits)[5]), 2), 
+         v1 = round(as.numeric(runs(fits)[6]), 2), 
+         v2 = round(as.numeric(runs(fits)[7]), 2)) %>%
+  ungroup()
+```
+```{r askdg}
+#save(res_med, file = "res_med1.rda")
+load("res_med1.rda")
+res_med
+
+any(is.na(res_med)) #No identical values for the parameters
+```
+
+```{r fit}
+#MODEL FIT
+#Response proportions (pdiffusion) statistics:
+obs_p <- mednew %>% #Observed response proportions
+  group_by(id, group) %>%
+  summarise(resp_b = sum(response == "upper" & classification == "blast")/
+              sum(classification == "blast"), 
+            resp_n = sum(response == "lower" & classification == "non-blast")/
+              sum(classification == "non-blast")) 
+
+pred_p <- res_med %>% #Predicted response proportions
+  group_by(id, group) %>%
+  summarise(blast = pdiffusion(Inf, response = "upper", 
+                               a = a, v = v1, 
+                               t0 = t0, z = z, 
+                               sv = sv, st0 = st0), 
+            nonblast = pdiffusion(Inf, response = "lower", 
+                                  a = a, v = v2, 
+                                  t0 = t0, z = z, 
+                                  sv = sv, st0 = st0)) 
+
+rps <- cbind(obs_p, pred_p)
+
+#Scatter plot: 
+g1 <- ggscatter(rps, x = "resp_b", y = "blast",
+                add.params = list(color = "black"),  
+                color = "group", palette = c("black", "grey"),
+                xlab = "Data Choice Prob", ylab = "Computed Choice Prob", 
+                title = "Blast") + 
+  stat_cor(aes(label = paste(..rr.label.., ..p.label.., sep = "~`,`~"))) +
+  geom_abline(slope = 1)
+g1 <- g1 %>%
+  ggpar(legend.title = "Group", legend = c("right"))
+
+g2 <- ggscatter(rps, x = "resp_n", y = "nonblast",
+                add.params = list(color = "black"), 
+                color = "group", palette = c("black", "grey"),
+                xlab = "Data Choice Prob", ylab = "Computed Choice Prob", 
+                title = "Non-Blast") + 
+  stat_cor(aes(label = paste(..rr.label.., ..p.label.., sep = "~`,`~"))) +
+  geom_abline(slope = 1)
+g2 <- g2 %>%
+  ggpar(legend.title = "Group", legend = c("right"))
+
+#Response quantiles (qdiffusion):
+obs_q <- mednew %>%
+  group_by(id, group) %>%
+  summarise(resq_0.5bu = quantile(rt[classification == "blast" 
+                                     & response == "upper"], probs = 0.5),
+            resq_0.5bl = quantile(rt[classification == "blast" 
+                                     & response == "lower"], probs = 0.5),
+            resq_0.5nu = quantile(rt[classification == "non-blast" 
+                                     & response == "upper"], probs = 0.5),
+            resq_0.5nl = quantile(rt[classification == "non-blast" 
+                                     & response == "lower"], probs = 0.5)) 
+
+pred_q <- res_med %>%
+  group_by(id, group) %>%
+  summarise(blast_upper0.5 = round(qdiffusion(c(0.5), response = "upper",
+                                              a = a, v = v1, 
+                                              t0 = t0, z = z, 
+                                              sv = sv, st0 = st0,
+                                              scale_p = TRUE), 3), 
+            nonblast_upper0.5 = round(qdiffusion(c(0.5), response = "upper",
+                                                 a = a, v = v2, 
+                                                 t0 = t0, z = z, 
+                                                 sv = sv, st0 = st0,
+                                                 scale_p = TRUE), 3),
+            blast_lower0.5 = round(qdiffusion(c(0.5), response = "lower",
+                                              a = a, v = v1, 
+                                              t0 = t0, z = z, 
+                                              sv = sv, st0 = st0,
+                                              scale_p = TRUE), 3), 
+            nonblast_lower0.5 = round(qdiffusion(c(0.5), response = "lower",
+                                                 a = a, v = v2, 
+                                                 t0 = t0, z = z, 
+                                                 sv = sv, st0 = st0,
+                                                 scale_p = TRUE), 3)) 
+
+rqs <- cbind(obs_q, pred_q)
+
+g3 <- ggscatter(rqs, x = "resq_0.5bu", y = "blast_upper0.5",
+                add.params = list(color = "black"),  
+                color = "group", palette = c("black", "grey"),
+                xlab = "Data Median RT", ylab = "Computed Median RT", 
+                title = "Blast (UR)") + 
+  stat_cor(aes(label = paste(..rr.label.., ..p.label.., sep = "~`,`~"))) +
+  geom_abline(slope = 1)
+g3 <- g3 %>%
+  ggpar(legend.title = "Group", legend = c("right"))
+
+g4 <- ggscatter(rqs, x = "resq_0.5bl", y = "blast_lower0.5",
+                add.params = list(color = "black"),  
+                color = "group", palette = c("black", "grey"),
+                xlab = "Data Median RT", ylab = "Computed Median RT", 
+                title = "Blast (LR)") + 
+  stat_cor(aes(label = paste(..rr.label.., ..p.label.., sep = "~`,`~"))) +
+  geom_abline(slope = 1)
+g4 <- g4 %>%
+  ggpar(legend.title = "Group", legend = c("right"))
+
+g5 <- ggscatter(rqs, x = "resq_0.5nu", y = "nonblast_upper0.5",
+                add.params = list(color = "black"), 
+                color = "group", palette = c("black", "grey"),
+                xlab = "Data Median RT", ylab = "Computed Median RT", 
+                title = "Non-Blast (UR)") + 
+  stat_cor(aes(label = paste(..rr.label.., ..p.label.., sep = "~`,`~"))) +
+  geom_abline(slope = 1)
+g5 <- g5%>%
+  ggpar(legend.title = "Group", legend = c("right"))
+
+g6 <- ggscatter(rqs, x = "resq_0.5nl", y = "nonblast_lower0.5",
+                add.params = list(color = "black"),  
+                color = "group", palette = c("black", "grey"),
+                xlab = "Data Median RT", ylab = "Computed Median RT", 
+                title = "Non-Blast (LR)") + 
+  stat_cor(aes(label = paste(..rr.label.., ..p.label.., sep = "~`,`~"))) +
+  geom_abline(slope = 1)
+g6 <- g6 %>%
+  ggpar(legend.title = "Group", legend = c("right"))
+```
+```{r pp, echo=TRUE, fig.width=11, fig.height=7}
+plot_grid(g1, g3, g5, g2, g4, g6, labels = c("a", "c", "e", "b", "d", "f"), ncol = 3) 
+#Can also use cor.test() to check the correlations
+```
+
+```{r anova}
+#ANOVA ANALYSIS
+#Rename all the ids to unique ones:
+res_meds <- res_med %>% 
+  select(id, group, a, t0, z, sv, st0, v1, v2) %>% 
+  nest(id, group) %>% 
+  mutate(ids = 1:55) %>% 
+  unnest() %>% 
+  mutate(v2 = -v2, 
+         bias = z - a/2)
+
+aov_car(a ~ group + Error(ids), res_meds) 
+aov_car(t0 ~ group + Error(ids), res_meds)
+aov_car(z ~ group + Error(ids), res_meds)
+aov_car(bias ~ group + Error(ids), res_meds)
+aov_car(sv ~ group + Error(ids), res_meds)
+aov_car(st0 ~ group + Error(ids), res_meds)
+
+#ANOVA for the drift rates: 
+drift_res <- res_meds %>% 
+  select(ids, group, v1, v2) %>% 
+  gather(v1, v2, key = "class", value = "drift") %>% 
+  mutate(class = factor(class, c("v1", "v2"), c("Blast", "Non-Blast"))) %>% 
+  arrange(-desc(ids)) 
+glimpse(drift_res)
+
+summary(lm(drift ~ group*class, drift_res))
+aov_ez("ids", "drift", drift_res, between = "group", within = "class")
+```
+
+```{r llcom}
+#LIKELIHOOD MODEL FOR THE COMPLICATED MODEL
+count <- 1
+ll_diffusion_com <- function(pars, rt, response, drift, level, ...) {
+  densities <- vector("numeric", length(rt))
+  for (i in 1:2) {
+    for (j in 1:2) {
+      densities[drift == levels(drift)[i] & level == levels(level)[j]] <- 
+        ddiffusion(rt = rt[drift == levels(drift)[i] & level == levels(level)[j]], 
+                   response = response[drift == levels(drift)[i] & 
+                                         level == levels(level)[j]], 
+                   a = pars["a"], 
+                   t0 = pars["t0"], 
+                   z = pars["z"],
+                   sv = pars["sv"],
+                   st0 = pars["st0"], 
+                   v = pars[5 + count])
+      count <- count + 1
+    }
+  }
+  if (any(densities == 0)) {
+    return(1e6)
+  } else {
+    return(-sum(log(densities)))
+  }
+}
+
+#GENERATE START VALUES FOR THE COMPLICATED MODEL
+get_start_values_com <- function() {
+  c(a = runif(1, 0.5, 3),
+    t0 = runif(1, 0, 0.5), 
+    z = runif(1, 0.4, 0.6), 
+    sv = runif(1, 0, 0.5),
+    st0 = runif(1, 0, 0.5), 
+    v1 = rnorm(1, 0, 2), 
+    v2 = rnorm(1, 0, 2), 
+    v3 = rnorm(1, 0, 2), 
+    v4 = rnorm(1, 0, 2)
+  )
+}
+
+#GENERATE PARAMETER VALUES FOR THE COMPLICATED MODEL
+runs_com <- function(data) {
+  mle <- data[which.max(data$logLik), 1:9]
+  which_max <- which(round(max(data$logLik), 3) == round(data$logLik, 3))
+  which_max <- which_max[which_max != which.max(data$logLik)]
+  mlenew <- mle
+  mlenew[abs(mle - data[which_max[1], 1:9]) > 0.01] <- NA
+  mlenew
+}
+```
+```{r kzckzdjch, message=FALSE, eval=FALSE}
+res_med_com <- mednew %>%
+  group_by(id, group) %>%
+  do(fits = rerun(5, nlminb(get_start_values_com(), ll_diffusion_com,
+                            rt = .$rt, response = .$response, 
+                            drift = .$classification,
+                            level = .$difficulty,
+                            lower = c(0, 0, 0, 0, 0, -Inf, -Inf, -Inf, -Inf))) %>%
+       map_dfr(~as_tibble(cbind(t(.$par),
+                                logLik = -.$objective,
+                                convergence = .$convergence)))) %>%
+  mutate(a = round(as.numeric(runs_com(fits)[1]), 2), 
+         t0 = round(as.numeric(runs_com(fits)[2]), 3), 
+         z = round(as.numeric(runs_com(fits)[3]), 2),
+         sv = round(as.numeric(runs_com(fits)[4]), 2), 
+         st0 = round(as.numeric(runs_com(fits)[5]), 2), 
+         v1 = round(as.numeric(runs_com(fits)[6]), 2), 
+         v2 = round(as.numeric(runs_com(fits)[7]), 2), 
+         v3 = round(as.numeric(runs_com(fits)[8]), 2), 
+         v4 = round(as.numeric(runs_com(fits)[9]), 2)) %>%
+  ungroup()
+```
+```{r zdcghzj}
+#save(res_med_com, file = "res_med_com1.rda")
+load("res_med_com1.rda")
+res_med_com
+
+any(is.na(res_med_com)) #Check identical parameter values
+```
+
+```{r fitcom, message=FALSE, eval=FALSE}
+#MODEL FIT FOR COMPLICATED MODEL 
+#Response proportions (pdiffusion):
+obs_com_p <- mednew %>% 
+  group_by(id, group, difficulty) %>%
+  summarise(resp_b = sum(response == "upper" & classification == "blast")/
+              sum(classification == "blast"),
+            resp_n = sum(response == "lower" & classification == "non-blast")/
+              sum(classification == "non-blast"))  %>%
+  arrange(desc(group))
+
+pred_comn <- res_med_com %>%
+  group_by(id, group) %>%
+  summarise(Easy = pdiffusion(Inf, response = "upper", 
+                              a = a, v = v1, 
+                              t0 = t0, z = z, 
+                              sv = sv, st0 = st0),
+            Hard = pdiffusion(Inf, response = "upper", 
+                              a = a, v = v2, 
+                              t0 = t0, z = z, 
+                              sv = sv, st0 = st0)) %>%
+  gather(Easy, Hard, key = "difficulty", value = "blast")
+pred_comm <- res_med_com %>%
+  group_by(id, group) %>%
+  summarise(Easy = pdiffusion(Inf, response = "lower", 
+                              a = a, v = v3, 
+                              t0 = t0, z = z, 
+                              sv = sv, st0 = st0),
+            Hard = pdiffusion(Inf, response = "lower", 
+                              a = a, v = v4, 
+                              t0 = t0, z = z, 
+                              sv = sv, st0 = st0)) %>%
+  gather(Easy, Hard, key = "difficulty", value = "nonblast")
+
+pred_com_p <- cbind(pred_comn, pred_comm) %>%
+  arrange(-desc(id)) %>%
+  select(id:blast, nonblast) %>%
+  arrange(desc(group))
+
+rps_com <- cbind(obs_com_p, pred_com_p)
+
+#Scatter plot: 
+g7 <- ggscatter(rps_com, x = "resp_b", y = "blast",
+                add.params = list(color = "black"), 
+                color = "difficulty", palette = c("black", "grey"),
+                xlab = "Data Choice Prob", 
+                ylab = "Computed Choice Prob", 
+                title = "Blast") + 
+  facet_grid(~ group) +
+  stat_cor(aes(label = paste(..rr.label.., ..p.label.., sep = "~`,`~"))) +
+  geom_abline(slope = 1) 
+g7 <- g7 %>%
+  ggpar(legend.title = "Difficulty", legend = c("bottom"))
+
+g8 <- ggscatter(rps_com, x = "resp_n", y = "nonblast",
+                add.params = list(color = "black"), 
+                color = "difficulty", palette = c("black", "grey"),
+                xlab = "Data Choice Prob", 
+                ylab = "Computed Choice Prob", 
+                title = "Non-Blast") +
+  facet_grid(~ group) + 
+  stat_cor(aes(label = paste(..rr.label.., ..p.label.., sep = "~`,`~"))) +
+  geom_abline(slope = 1)
+g8 <- g8 %>%
+  ggpar(legend.title = "Difficulty", legend = c("bottom"))
+
+#Response quantiles (qdiffusion):
+obs_com_q11 <- mednew %>%
+  group_by(id, group, difficulty) %>%
+  summarise(Correct = quantile(rt[classification == "blast" & response == "upper"], 
+                               probs = 0.1), 
+            Incorrect = quantile(rt[classification == "blast" & response == "lower"], 
+                                 probs = 0.1)) %>%
+  gather(Correct, Incorrect, key = "correctness", value = "rt_b") %>% 
+  arrange(desc(group))
+obs_com_q12 <- mednew %>%
+  group_by(id, group, difficulty) %>%
+  summarise(Incorrect = quantile(rt[classification == "non-blast" & response == "upper"], 
+                                 probs = 0.1), 
+            Correct = quantile(rt[classification == "non-blast" & response == "lower"], 
+                               probs = 0.1)) %>%
+  gather(Correct, Incorrect, key = "correctness", value = "rt_nb") %>% 
+  arrange(desc(group))
+obs_com_q1 <- cbind(obs_com_q11, obs_com_q12) %>% 
+  select(-id1, -group1, -difficulty1, -correctness1)
+obs_com_q1$dis <- "10%"
+
+obs_com_q21 <- mednew %>%
+  group_by(id, group, difficulty) %>%
+  summarise(Correct = quantile(rt[classification == "blast" & response == "upper"], 
+                               probs = 0.5), 
+            Incorrect = quantile(rt[classification == "blast" & response == "lower"], 
+                                 probs = 0.5)) %>%
+  gather(Correct, Incorrect, key = "correctness", value = "rt_b") %>% 
+  arrange(desc(group))
+obs_com_q22 <- mednew %>%
+  group_by(id, group, difficulty) %>%
+  summarise(Incorrect = quantile(rt[classification == "non-blast" & response == "upper"], 
+                                 probs = 0.5), 
+            Correct = quantile(rt[classification == "non-blast" & response == "lower"], 
+                               probs = 0.5)) %>%
+  gather(Correct, Incorrect, key = "correctness", value = "rt_nb") %>% 
+  arrange(desc(group))
+obs_com_q2 <- cbind(obs_com_q21, obs_com_q22) %>% 
+  select(-id1, -group1, -difficulty1, -correctness1)
+obs_com_q2$dis <- "50%"
+
+obs_com_q31 <- mednew %>%
+  group_by(id, group, difficulty) %>%
+  summarise(Correct = quantile(rt[classification == "blast" & response == "upper"], 
+                               probs = 0.9), 
+            Incorrect = quantile(rt[classification == "blast" & response == "lower"], 
+                                 probs = 0.9)) %>%
+  gather(Correct, Incorrect, key = "correctness", value = "rt_b") %>% 
+  arrange(desc(group))
+obs_com_q32 <- mednew %>%
+  group_by(id, group, difficulty) %>%
+  summarise(Incorrect = quantile(rt[classification == "non-blast" & response == "upper"], 
+                                 probs = 0.9), 
+            Correct = quantile(rt[classification == "non-blast" & response == "lower"], 
+                               probs = 0.9)) %>%
+  gather(Correct, Incorrect, key = "correctness", value = "rt_nb") %>% 
+  arrange(desc(group))
+obs_com_q3 <- cbind(obs_com_q31, obs_com_q32) %>% 
+  select(-id1, -group1, -difficulty1, -correctness1)
+obs_com_q3$dis <- "90%"
+
+obs <- rbind(obs_com_q1, obs_com_q2, obs_com_q3) %>% 
+  arrange(-desc(correctness))
+
+pred_como11 <- res_med_com %>%
+  group_by(id, group) %>%
+  summarise(easy = round(qdiffusion(c(0.1), response = "upper",
+                                    a = a, v = v1, 
+                                    t0 = t0, z = z, 
+                                    sv = sv, st0 = st0,
+                                    scale_p = TRUE), 4), 
+            hard = round(qdiffusion(c(0.1), response = "upper",
+                                    a = a, v = v2, 
+                                    t0 = t0, z = z, 
+                                    sv = sv, st0 = st0,
+                                    scale_p = TRUE), 4)) %>%
+  gather(easy, hard, key = "difficulty", value = "Correct")
+pred_como21 <- res_med_com %>%
+  group_by(id, group) %>%
+  summarise(easy = round(qdiffusion(c(0.1), response = "lower",
+                                    a = a, v = v1, 
+                                    t0 = t0, z = z, 
+                                    sv = sv, st0 = st0,
+                                    scale_p = TRUE), 4),
+            hard = round(qdiffusion(c(0.1), response = "lower",
+                                    a = a, v = v2, 
+                                    t0 = t0, z = z, 
+                                    sv = sv, st0 = st0,
+                                    scale_p = TRUE), 4)) %>%
+  gather(easy, hard, key = "difficulty", value = "Incorrect")
+pre_comoo1 <- cbind(pred_como11, pred_como21) %>% 
+  select(-id1, -group1, -difficulty1) %>% 
+  gather(Correct, Incorrect, key = "correctness", value = "prt_b") %>% 
+  arrange(desc(group))
+
+pred_comp11 <- res_med_com %>%
+  group_by(id, group) %>%
+  summarise(easy = round(qdiffusion(c(0.1), response = "upper",
+                                    a = a, v = v3, 
+                                    t0 = t0, z = z, 
+                                    sv = sv, st0 = st0,
+                                    scale_p = TRUE), 4), 
+            hard = round(qdiffusion(c(0.1), response = "upper",
+                                    a = a, v = v4, 
+                                    t0 = t0, z = z, 
+                                    sv = sv, st0 = st0,
+                                    scale_p = TRUE), 4)) %>%
+  gather(easy, hard, key = "difficulty", value = "Incorrect")
+pred_comp21 <- res_med_com %>%
+  group_by(id, group) %>%
+  summarise(easy = round(qdiffusion(c(0.1), response = "lower",
+                                    a = a, v = v3, 
+                                    t0 = t0, z = z, 
+                                    sv = sv, st0 = st0,
+                                    scale_p = TRUE), 4), 
+            hard = round(qdiffusion(c(0.1), response = "lower",
+                                    a = a, v = v4, 
+                                    t0 = t0, z = z, 
+                                    sv = sv, st0 = st0,
+                                    scale_p = TRUE), 4)) %>%
+  gather(easy, hard, key = "difficulty", value = "Correct")
+pre_comoo2 <- cbind(pred_comp11, pred_comp21) %>% 
+  select(-id1, -group1, -difficulty1) %>% 
+  gather(Correct, Incorrect, key = "correctness", value = "prt_nb") %>% 
+  arrange(desc(group))
+
+pred_com_q1 <- cbind(pre_comoo1, pre_comoo2) %>%
+  select(-id1, -group1, -difficulty1, -correctness1) %>%
+  arrange(-desc(id)) %>% 
+  arrange(desc(group)) %>% 
+  arrange(-desc(correctness)) 
+pred_com_q1$dis <- "10%"
+
+pred_como12 <- res_med_com %>%
+  group_by(id, group) %>%
+  summarise(easy = round(qdiffusion(c(0.5), response = "upper",
+                                    a = a, v = v1, 
+                                    t0 = t0, z = z, 
+                                    sv = sv, st0 = st0,
+                                    scale_p = TRUE), 4), 
+            hard = round(qdiffusion(c(0.5), response = "upper",
+                                    a = a, v = v2, 
+                                    t0 = t0, z = z, 
+                                    sv = sv, st0 = st0,
+                                    scale_p = TRUE), 4)) %>%
+  gather(easy, hard, key = "difficulty", value = "Correct")
+pred_como22 <- res_med_com %>%
+  group_by(id, group) %>%
+  summarise(easy = round(qdiffusion(c(0.5), response = "lower",
+                                    a = a, v = v1, 
+                                    t0 = t0, z = z, 
+                                    sv = sv, st0 = st0,
+                                    scale_p = TRUE), 4),
+            hard = round(qdiffusion(c(0.5), response = "lower",
+                                    a = a, v = v2, 
+                                    t0 = t0, z = z, 
+                                    sv = sv, st0 = st0,
+                                    scale_p = TRUE), 4)) %>%
+  gather(easy, hard, key = "difficulty", value = "Incorrect")
+pre_comoo3 <- cbind(pred_como12, pred_como22) %>% 
+  select(-id1, -group1, -difficulty1) %>% 
+  gather(Correct, Incorrect, key = "correctness", value = "prt_b") %>% 
+  arrange(desc(group))
+
+pred_comp12 <- res_med_com %>%
+  group_by(id, group) %>%
+  summarise(easy = round(qdiffusion(c(0.5), response = "upper",
+                                    a = a, v = v3, 
+                                    t0 = t0, z = z, 
+                                    sv = sv, st0 = st0,
+                                    scale_p = TRUE), 4), 
+            hard = round(qdiffusion(c(0.5), response = "upper",
+                                    a = a, v = v4, 
+                                    t0 = t0, z = z, 
+                                    sv = sv, st0 = st0,
+                                    scale_p = TRUE), 4)) %>%
+  gather(easy, hard, key = "difficulty", value = "Incorrect")
+pred_comp22 <- res_med_com %>%
+  group_by(id, group) %>%
+  summarise(easy = round(qdiffusion(c(0.5), response = "lower",
+                                    a = a, v = v3, 
+                                    t0 = t0, z = z, 
+                                    sv = sv, st0 = st0,
+                                    scale_p = TRUE), 4), 
+            hard = round(qdiffusion(c(0.5), response = "lower",
+                                    a = a, v = v4, 
+                                    t0 = t0, z = z, 
+                                    sv = sv, st0 = st0,
+                                    scale_p = TRUE), 4)) %>%
+  gather(easy, hard, key = "difficulty", value = "Correct")
+pre_comoo4 <- cbind(pred_comp12, pred_comp22) %>% 
+  select(-id1, -group1, -difficulty1) %>% 
+  gather(Correct, Incorrect, key = "correctness", value = "prt_nb") %>% 
+  arrange(desc(group))
+
+pred_com_q2 <- cbind(pre_comoo3, pre_comoo4) %>%
+  select(-id1, -group1, -difficulty1, -correctness1) %>%
+  arrange(-desc(id)) %>% 
+  arrange(desc(group)) %>% 
+  arrange(-desc(correctness)) 
+pred_com_q2$dis <- "50%"
+
+pred_como13 <- res_med_com %>%
+  group_by(id, group) %>%
+  summarise(easy = round(qdiffusion(c(0.9), response = "upper",
+                                    a = a, v = v1, 
+                                    t0 = t0, z = z, 
+                                    sv = sv, st0 = st0,
+                                    scale_p = TRUE), 4), 
+            hard = round(qdiffusion(c(0.9), response = "upper",
+                                    a = a, v = v2, 
+                                    t0 = t0, z = z, 
+                                    sv = sv, st0 = st0,
+                                    scale_p = TRUE), 4)) %>%
+  gather(easy, hard, key = "difficulty", value = "Correct")
+pred_como23 <- res_med_com %>%
+  group_by(id, group) %>%
+  summarise(easy = round(qdiffusion(c(0.9), response = "lower",
+                                    a = a, v = v1, 
+                                    t0 = t0, z = z, 
+                                    sv = sv, st0 = st0,
+                                    scale_p = TRUE), 4),
+            hard = round(qdiffusion(c(0.9), response = "lower",
+                                    a = a, v = v2, 
+                                    t0 = t0, z = z, 
+                                    sv = sv, st0 = st0,
+                                    scale_p = TRUE), 4)) %>%
+  gather(easy, hard, key = "difficulty", value = "Incorrect")
+pre_comoo5 <- cbind(pred_como13, pred_como23) %>% 
+  select(-id1, -group1, -difficulty1) %>% 
+  gather(Correct, Incorrect, key = "correctness", value = "prt_b") %>% 
+  arrange(desc(group))
+
+pred_comp13 <- res_med_com %>%
+  group_by(id, group) %>%
+  summarise(easy = round(qdiffusion(c(0.9), response = "upper",
+                                    a = a, v = v3, 
+                                    t0 = t0, z = z, 
+                                    sv = sv, st0 = st0,
+                                    scale_p = TRUE), 4), 
+            hard = round(qdiffusion(c(0.9), response = "upper",
+                                    a = a, v = v4, 
+                                    t0 = t0, z = z, 
+                                    sv = sv, st0 = st0,
+                                    scale_p = TRUE), 4)) %>%
+  gather(easy, hard, key = "difficulty", value = "Incorrect")
+pred_comp23 <- res_med_com %>%
+  group_by(id, group) %>%
+  summarise(easy = round(qdiffusion(c(0.9), response = "lower",
+                                    a = a, v = v3, 
+                                    t0 = t0, z = z, 
+                                    sv = sv, st0 = st0,
+                                    scale_p = TRUE), 4), 
+            hard = round(qdiffusion(c(0.9), response = "lower",
+                                    a = a, v = v4, 
+                                    t0 = t0, z = z, 
+                                    sv = sv, st0 = st0,
+                                    scale_p = TRUE), 4)) %>%
+  gather(easy, hard, key = "difficulty", value = "Correct")
+pre_comoo6 <- cbind(pred_comp13, pred_comp23) %>% 
+  select(-id1, -group1, -difficulty1) %>% 
+  gather(Correct, Incorrect, key = "correctness", value = "prt_nb") %>% 
+  arrange(desc(group))
+
+pred_com_q3 <- cbind(pre_comoo5, pre_comoo6) %>%
+  select(-id1, -group1, -difficulty1, -correctness1) %>%
+  arrange(-desc(id)) %>% 
+  arrange(desc(group)) %>% 
+  arrange(-desc(correctness)) 
+pred_com_q3$dis <- "90%"
+
+shs <- rbind(pred_com_q1, pred_com_q2, pred_com_q3) %>% 
+  arrange(-desc(dis)) %>% 
+  arrange(-desc(correctness)) 
+
+rqs_comm <- cbind(obs, shs) %>%
+  select(- id1, -group1, -difficulty1, -dis1, -correctness1)
+
+sh1 <- ggscatter(rqs_comm, x = "rt_b", y = "prt_b",
+                 add.params = list(color = "black"), merge = TRUE,
+                 color = "dis", palette = c("black", "grey44", "grey80"),
+                 shape = "correctness",
+                 xlab = "Data Response Time", 
+                 ylab = "Computed Response Time", 
+                 title = "Blast") + 
+  facet_grid(~ group) + 
+  stat_cor(aes(label = paste(..rr.label.., ..p.label.., sep = "~`,`~"))) +
+  geom_abline(slope = 1) +
+  labs(shape = "Type", colour = "Quantile") 
+sh1 <- sh1 %>%  
+  ggpar(legend = c("bottom"))
+
+sh2 <- ggscatter(rqs_comm, x = "rt_nb", y = "prt_nb",
+                 add.params = list(color = "black"), merge = TRUE,
+                 color = "dis", palette = c("black", "grey44", "grey80"),
+                 shape = "correctness",
+                 xlab = "Data Response Time", 
+                 ylab = "Computed Response Time", 
+                 title = "Non-Blast") + 
+  facet_grid(~ group) + 
+  stat_cor(aes(label = paste(..rr.label.., ..p.label.., sep = "~`,`~"))) +
+  geom_abline(slope = 1) +
+  labs(shape = "Type", colour = "Quantile") 
+sh2 <- sh2 %>%  
+  ggpar(legend = c("bottom"))
+```
+```{r ppp, message=FALSE, eval=FALSE}
+plot_grid(g7, g8, sh1, sh2, labels = "auto", ncol = 2) 
+#Can also use cor.test() to check the correlations
+```
+
+```{r dvdzva, include=FALSE}
+#Response quantiles (qdiffusion):
+obs_com_q11 <- mednew %>%
+  group_by(id, group, difficulty) %>%
+  summarise(Correct = quantile(rt[classification == "blast" & response == "upper"], 
+                               probs = 0.1), 
+            Incorrect = quantile(rt[classification == "blast" & response == "lower"], 
+                                 probs = 0.1)) %>%
+  gather(Correct, Incorrect, key = "correctness", value = "rt_b") %>% 
+  arrange(desc(group))
+obs_com_q12 <- mednew %>%
+  group_by(id, group, difficulty) %>%
+  summarise(Incorrect = quantile(rt[classification == "non-blast" & response == "upper"], 
+                                 probs = 0.1), 
+            Correct = quantile(rt[classification == "non-blast" & response == "lower"], 
+                               probs = 0.1)) %>%
+  gather(Correct, Incorrect, key = "correctness", value = "rt_nb") %>% 
+  arrange(desc(group))
+obs_com_q1 <- cbind(obs_com_q11, obs_com_q12) %>% 
+  select(-id1, -group1, -difficulty1, -correctness1)
+obs_com_q1$dis <- "10%"
+
+obs_com_q21 <- mednew %>%
+  group_by(id, group, difficulty) %>%
+  summarise(Correct = quantile(rt[classification == "blast" & response == "upper"], 
+                               probs = 0.5), 
+            Incorrect = quantile(rt[classification == "blast" & response == "lower"], 
+                                 probs = 0.5)) %>%
+  gather(Correct, Incorrect, key = "correctness", value = "rt_b") %>% 
+  arrange(desc(group))
+obs_com_q22 <- mednew %>%
+  group_by(id, group, difficulty) %>%
+  summarise(Incorrect = quantile(rt[classification == "non-blast" & response == "upper"], 
+                                 probs = 0.5), 
+            Correct = quantile(rt[classification == "non-blast" & response == "lower"], 
+                               probs = 0.5)) %>%
+  gather(Correct, Incorrect, key = "correctness", value = "rt_nb") %>% 
+  arrange(desc(group))
+obs_com_q2 <- cbind(obs_com_q21, obs_com_q22) %>% 
+  select(-id1, -group1, -difficulty1, -correctness1)
+obs_com_q2$dis <- "50%"
+
+obs_com_q31 <- mednew %>%
+  group_by(id, group, difficulty) %>%
+  summarise(Correct = quantile(rt[classification == "blast" & response == "upper"], 
+                               probs = 0.9), 
+            Incorrect = quantile(rt[classification == "blast" & response == "lower"], 
+                                 probs = 0.9)) %>%
+  gather(Correct, Incorrect, key = "correctness", value = "rt_b") %>% 
+  arrange(desc(group))
+obs_com_q32 <- mednew %>%
+  group_by(id, group, difficulty) %>%
+  summarise(Incorrect = quantile(rt[classification == "non-blast" & response == "upper"], 
+                                 probs = 0.9), 
+            Correct = quantile(rt[classification == "non-blast" & response == "lower"], 
+                               probs = 0.9)) %>%
+  gather(Correct, Incorrect, key = "correctness", value = "rt_nb") %>% 
+  arrange(desc(group))
+obs_com_q3 <- cbind(obs_com_q31, obs_com_q32) %>% 
+  select(-id1, -group1, -difficulty1, -correctness1)
+obs_com_q3$dis <- "90%"
+
+obs <- rbind(obs_com_q1, obs_com_q2, obs_com_q3) %>% 
+  arrange(-desc(correctness))
+
+pred_como11 <- res_med_com %>%
+  group_by(id, group) %>%
+  summarise(easy = round(qdiffusion(c(0.1), response = "upper",
+                                    a = a, v = v1, 
+                                    t0 = t0, z = z, 
+                                    sv = sv, st0 = st0,
+                                    scale_p = TRUE), 4), 
+            hard = round(qdiffusion(c(0.1), response = "upper",
+                                    a = a, v = v2, 
+                                    t0 = t0, z = z, 
+                                    sv = sv, st0 = st0,
+                                    scale_p = TRUE), 4)) %>%
+  gather(easy, hard, key = "difficulty", value = "Correct")
+pred_como21 <- res_med_com %>%
+  group_by(id, group) %>%
+  summarise(easy = round(qdiffusion(c(0.1), response = "lower",
+                                    a = a, v = v1, 
+                                    t0 = t0, z = z, 
+                                    sv = sv, st0 = st0,
+                                    scale_p = TRUE), 4),
+            hard = round(qdiffusion(c(0.1), response = "lower",
+                                    a = a, v = v2, 
+                                    t0 = t0, z = z, 
+                                    sv = sv, st0 = st0,
+                                    scale_p = TRUE), 4)) %>%
+  gather(easy, hard, key = "difficulty", value = "Incorrect")
+pre_comoo1 <- cbind(pred_como11, pred_como21) %>% 
+  select(-id1, -group1, -difficulty1) %>% 
+  gather(Correct, Incorrect, key = "correctness", value = "prt_b") %>% 
+  arrange(desc(group))
+
+pred_comp11 <- res_med_com %>%
+  group_by(id, group) %>%
+  summarise(easy = round(qdiffusion(c(0.1), response = "upper",
+                                    a = a, v = v3, 
+                                    t0 = t0, z = z, 
+                                    sv = sv, st0 = st0,
+                                    scale_p = TRUE), 4), 
+            hard = round(qdiffusion(c(0.1), response = "upper",
+                                    a = a, v = v4, 
+                                    t0 = t0, z = z, 
+                                    sv = sv, st0 = st0,
+                                    scale_p = TRUE), 4)) %>%
+  gather(easy, hard, key = "difficulty", value = "Incorrect")
+pred_comp21 <- res_med_com %>%
+  group_by(id, group) %>%
+  summarise(easy = round(qdiffusion(c(0.1), response = "lower",
+                                    a = a, v = v3, 
+                                    t0 = t0, z = z, 
+                                    sv = sv, st0 = st0,
+                                    scale_p = TRUE), 4), 
+            hard = round(qdiffusion(c(0.1), response = "lower",
+                                    a = a, v = v4, 
+                                    t0 = t0, z = z, 
+                                    sv = sv, st0 = st0,
+                                    scale_p = TRUE), 4)) %>%
+  gather(easy, hard, key = "difficulty", value = "Correct")
+pre_comoo2 <- cbind(pred_comp11, pred_comp21) %>% 
+  select(-id1, -group1, -difficulty1) %>% 
+  gather(Correct, Incorrect, key = "correctness", value = "prt_nb") %>% 
+  arrange(desc(group))
+
+pred_com_q1 <- cbind(pre_comoo1, pre_comoo2) %>%
+  select(-id1, -group1, -difficulty1, -correctness1) %>%
+  arrange(-desc(id)) %>% 
+  arrange(desc(group)) %>% 
+  arrange(-desc(correctness)) 
+pred_com_q1$dis <- "10%"
+
+pred_como12 <- res_med_com %>%
+  group_by(id, group) %>%
+  summarise(easy = round(qdiffusion(c(0.5), response = "upper",
+                                    a = a, v = v1, 
+                                    t0 = t0, z = z, 
+                                    sv = sv, st0 = st0,
+                                    scale_p = TRUE), 4), 
+            hard = round(qdiffusion(c(0.5), response = "upper",
+                                    a = a, v = v2, 
+                                    t0 = t0, z = z, 
+                                    sv = sv, st0 = st0,
+                                    scale_p = TRUE), 4)) %>%
+  gather(easy, hard, key = "difficulty", value = "Correct")
+pred_como22 <- res_med_com %>%
+  group_by(id, group) %>%
+  summarise(easy = round(qdiffusion(c(0.5), response = "lower",
+                                    a = a, v = v1, 
+                                    t0 = t0, z = z, 
+                                    sv = sv, st0 = st0,
+                                    scale_p = TRUE), 4),
+            hard = round(qdiffusion(c(0.5), response = "lower",
+                                    a = a, v = v2, 
+                                    t0 = t0, z = z, 
+                                    sv = sv, st0 = st0,
+                                    scale_p = TRUE), 4)) %>%
+  gather(easy, hard, key = "difficulty", value = "Incorrect")
+pre_comoo3 <- cbind(pred_como12, pred_como22) %>% 
+  select(-id1, -group1, -difficulty1) %>% 
+  gather(Correct, Incorrect, key = "correctness", value = "prt_b") %>% 
+  arrange(desc(group))
+
+pred_comp12 <- res_med_com %>%
+  group_by(id, group) %>%
+  summarise(easy = round(qdiffusion(c(0.5), response = "upper",
+                                    a = a, v = v3, 
+                                    t0 = t0, z = z, 
+                                    sv = sv, st0 = st0,
+                                    scale_p = TRUE), 4), 
+            hard = round(qdiffusion(c(0.5), response = "upper",
+                                    a = a, v = v4, 
+                                    t0 = t0, z = z, 
+                                    sv = sv, st0 = st0,
+                                    scale_p = TRUE), 4)) %>%
+  gather(easy, hard, key = "difficulty", value = "Incorrect")
+pred_comp22 <- res_med_com %>%
+  group_by(id, group) %>%
+  summarise(easy = round(qdiffusion(c(0.5), response = "lower",
+                                    a = a, v = v3, 
+                                    t0 = t0, z = z, 
+                                    sv = sv, st0 = st0,
+                                    scale_p = TRUE), 4), 
+            hard = round(qdiffusion(c(0.5), response = "lower",
+                                    a = a, v = v4, 
+                                    t0 = t0, z = z, 
+                                    sv = sv, st0 = st0,
+                                    scale_p = TRUE), 4)) %>%
+  gather(easy, hard, key = "difficulty", value = "Correct")
+pre_comoo4 <- cbind(pred_comp12, pred_comp22) %>% 
+  select(-id1, -group1, -difficulty1) %>% 
+  gather(Correct, Incorrect, key = "correctness", value = "prt_nb") %>% 
+  arrange(desc(group))
+
+pred_com_q2 <- cbind(pre_comoo3, pre_comoo4) %>%
+  select(-id1, -group1, -difficulty1, -correctness1) %>%
+  arrange(-desc(id)) %>% 
+  arrange(desc(group)) %>% 
+  arrange(-desc(correctness)) 
+pred_com_q2$dis <- "50%"
+
+pred_como13 <- res_med_com %>%
+  group_by(id, group) %>%
+  summarise(easy = round(qdiffusion(c(0.9), response = "upper",
+                                    a = a, v = v1, 
+                                    t0 = t0, z = z, 
+                                    sv = sv, st0 = st0,
+                                    scale_p = TRUE), 4), 
+            hard = round(qdiffusion(c(0.9), response = "upper",
+                                    a = a, v = v2, 
+                                    t0 = t0, z = z, 
+                                    sv = sv, st0 = st0,
+                                    scale_p = TRUE), 4)) %>%
+  gather(easy, hard, key = "difficulty", value = "Correct")
+pred_como23 <- res_med_com %>%
+  group_by(id, group) %>%
+  summarise(easy = round(qdiffusion(c(0.9), response = "lower",
+                                    a = a, v = v1, 
+                                    t0 = t0, z = z, 
+                                    sv = sv, st0 = st0,
+                                    scale_p = TRUE), 4),
+            hard = round(qdiffusion(c(0.9), response = "lower",
+                                    a = a, v = v2, 
+                                    t0 = t0, z = z, 
+                                    sv = sv, st0 = st0,
+                                    scale_p = TRUE), 4)) %>%
+  gather(easy, hard, key = "difficulty", value = "Incorrect")
+pre_comoo5 <- cbind(pred_como13, pred_como23) %>% 
+  select(-id1, -group1, -difficulty1) %>% 
+  gather(Correct, Incorrect, key = "correctness", value = "prt_b") %>% 
+  arrange(desc(group))
+
+pred_comp13 <- res_med_com %>%
+  group_by(id, group) %>%
+  summarise(easy = round(qdiffusion(c(0.9), response = "upper",
+                                    a = a, v = v3, 
+                                    t0 = t0, z = z, 
+                                    sv = sv, st0 = st0,
+                                    scale_p = TRUE), 4), 
+            hard = round(qdiffusion(c(0.9), response = "upper",
+                                    a = a, v = v4, 
+                                    t0 = t0, z = z, 
+                                    sv = sv, st0 = st0,
+                                    scale_p = TRUE), 4)) %>%
+  gather(easy, hard, key = "difficulty", value = "Incorrect")
+pred_comp23 <- res_med_com %>%
+  group_by(id, group) %>%
+  summarise(easy = round(qdiffusion(c(0.9), response = "lower",
+                                    a = a, v = v3, 
+                                    t0 = t0, z = z, 
+                                    sv = sv, st0 = st0,
+                                    scale_p = TRUE), 4), 
+            hard = round(qdiffusion(c(0.9), response = "lower",
+                                    a = a, v = v4, 
+                                    t0 = t0, z = z, 
+                                    sv = sv, st0 = st0,
+                                    scale_p = TRUE), 4)) %>%
+  gather(easy, hard, key = "difficulty", value = "Correct")
+pre_comoo6 <- cbind(pred_comp13, pred_comp23) %>% 
+  select(-id1, -group1, -difficulty1) %>% 
+  gather(Correct, Incorrect, key = "correctness", value = "prt_nb") %>% 
+  arrange(desc(group))
+
+pred_com_q3 <- cbind(pre_comoo5, pre_comoo6) %>%
+  select(-id1, -group1, -difficulty1, -correctness1) %>%
+  arrange(-desc(id)) %>% 
+  arrange(desc(group)) %>% 
+  arrange(-desc(correctness)) 
+pred_com_q3$dis <- "90%"
+
+shs <- rbind(pred_com_q1, pred_com_q2, pred_com_q3) %>% 
+  arrange(-desc(dis)) %>% 
+  arrange(-desc(correctness)) 
+
+rqs_comm <- cbind(obs, shs) %>%
+  select(- id1, -group1, -difficulty1, -dis1, -correctness1)
+```
+```{r akjssdhfd, echo=TRUE, fig.height=4, fig.width=10}
+sh3 <- ggscatter(rqs_comm, x = "rt_b", y = "prt_b",
+                 add.params = list(color = "black"), #merge = TRUE,
+                 color = "dis", palette = c("black", "grey44", "grey80"),
+                 shape = "difficulty",
+                 xlab = "Data Response Time", 
+                 ylab = "Computed Response Time", 
+                 title = "Blast") + 
+  facet_grid(~ group) + 
+  stat_cor(aes(label = paste(..rr.label.., ..p.label.., sep = "~`,`~"))) +
+  geom_abline(slope = 1) +
+  labs(shape = "Difficulty", colour = "Quantile") 
+sh3 <- sh3 %>%  
+  ggpar(legend = c("right"))
+
+sh4 <- ggscatter(rqs_comm, x = "rt_nb", y = "prt_nb",
+                 add.params = list(color = "black"), merge = TRUE,
+                 color = "dis", palette = c("black", "grey44", "grey80"),
+                 shape = "difficulty",
+                 xlab = "Data Response Time", 
+                 ylab = "Computed Response Time", 
+                 title = "Non-Blast") + 
+  facet_grid(~ group) + 
+  stat_cor(aes(label = paste(..rr.label.., ..p.label.., sep = "~`,`~"))) +
+  geom_abline(slope = 1) +
+  labs(shape = "Difficulty", colour = "Quantile") 
+sh4 <- sh4 %>%  
+  ggpar(legend = c("right"))
+
+plot_grid(sh3, sh4, labels = "auto", nrow = 1)
+```
+
+```{r anovacom, fig.height=5, fig.width=5}
+#ANOVA ANALYSIS
+#Rename all the ids to unique ones: 
+res_med_coms <- res_med_com %>% 
+  select(id, group, a, t0, z, sv, st0, v1, v2, v3, v4) %>% 
+  nest(id, group) %>% 
+  mutate(ids = 1:55) %>% 
+  unnest() %>% 
+  mutate(v3 = -v3, v4 = -v4, 
+         bias = z - a/2)
+
+aov_car(t0 ~ group + Error(ids), res_med_coms)
+aov_car(sv ~ group + Error(ids), res_med_coms)
+aov_car(bias ~ group + Error(ids), res_med_coms)
+
+a1 <- aov_car(a ~ group + Error(ids), res_med_coms)
+a1
+a2 <- aov_car(z ~ group + Error(ids), res_med_coms)
+a2
+a3 <- aov_car(st0 ~ group + Error(ids), res_med_coms)
+a3
+
+#ANOVA for the drift rates: 
+drift_res_com1 <- res_med_coms %>% 
+  select(ids, group, v1, v3) %>% 
+  gather(v1, v3, key = "class", value = "Easy") %>% 
+  mutate(class = factor(class, c("v1", "v3"), c("Blast", "Non-Blast"))) %>% 
+  arrange(-desc(ids)) 
+drift_res_com2 <- res_med_coms %>% 
+  select(ids, group, v2, v4) %>% 
+  gather(v2, v4, key = "class", value = "Hard") %>% 
+  mutate(class = factor(class, c("v2", "v4"), c("Blast", "Non-Blast"))) %>% 
+  arrange(-desc(ids)) 
+
+drift_res_com <- merge(drift_res_com1, drift_res_com2) %>% 
+  gather(Easy, Hard, key = "difficulty", value = "drift") %>% 
+  arrange(-desc(ids)) 
+glimpse(drift_res_com)
+
+m2 <- lm(drift ~ group*class*difficulty, drift_res_com)
+summary(m2)
+
+aww <- aov_ez("ids", "drift", drift_res_com, between = "group", 
+              within = c("class", "difficulty"))
+aww
+
+#Follow-up test for drift rates: 
+#emmip(m2, group ~ difficulty | class)
+contrast(emmeans(m2, "group", adjust = "holm"), interaction = "pairwise")
+
+contrast(emmeans(m2, "group", by = c("class"), adjust = "holm"), 
+         interaction = "pairwise")
+contrast(emmeans(m2, "group", by = c("difficulty"), adjust = "holm"), 
+         interaction = "pairwise")
+
+plot(emmeans(m2, "group", by = c("class", "difficulty"), adjust = "holm"))
+contrast(emmeans(m2, "group", by = c("class", "difficulty"), adjust = "holm"), 
+         interaction = "pairwise") 
+```
+
+```{r dvdf, eval=FALSE}
+ay <- afex_plot(a1, x = "group", error = "between",
+                data_geom = ggbeeswarm::geom_beeswarm,
+                data_arg = list(
+                  dodge.width = 0.5,  
+                  cex = 0.8,
+                  color = "darkgrey")) +
+  geom_line(aes(group = 1)) +
+  theme_pubr() +
+  xlab("Group") + 
+  ylab("Parameter a")
+
+ah <- afex_plot(a2, x = "group", 
+                data_geom = ggbeeswarm::geom_beeswarm,
+                data_arg = list(
+                  dodge.width = 0.5,  
+                  cex = 0.8,
+                  color = "darkgrey")) +
+  geom_line(aes(group = 1)) +
+  theme_pubr() +
+  xlab("Group") + 
+  ylab("Parameter z")
+
+au <- afex_plot(a3, x = "group", 
+                data_geom = ggbeeswarm::geom_beeswarm,
+                data_arg = list(
+                  dodge.width = 0.5,  
+                  cex = 0.8,
+                  color = "darkgrey")) +
+  geom_line(aes(group = 1)) +
+  theme_pubr() +
+  xlab("Group") + 
+  ylab("Parameter st0")
+
+af <- afex_plot(aww, x = "group", trace = "difficulty",  
+                error = "none", dodge = 0.5, legend_title = "Difficulty Level",
+                data_geom = ggbeeswarm::geom_beeswarm,
+                data_arg = list(
+                  dodge.width = 0.5,  
+                  cex = 0.8,
+                  color = "darkgrey"))  +
+  theme_pubr() +
+  xlab("Group") + 
+  ylab("Drift Rate")
+af <- af %>%
+  ggpar(legend = c("bottom"))
+
+ak <- afex_plot(aww, x = "group", trace = "class",  
+                error = "none", dodge = 0.5, legend_title = "Classification",
+                data_geom = ggbeeswarm::geom_beeswarm,
+                data_arg = list(
+                  dodge.width = 0.5,  
+                  cex = 0.8,
+                  color = "darkgrey"))  +
+  theme_pubr() +
+  xlab("Group") + 
+  ylab("Drift Rate")
+ak <- ak %>%
+  ggpar(legend = c("bottom"))
+
+oj <- plot_grid(ay, ah, au, nrow = 1, labels = "auto")
+mj <- plot_grid(af, ak, nrow = 1, labels = c("d", "e"))
+plot_grid(oj, mj, nrow = 2)
+```
+
+```{r nkxd, message=FALSE}
+bj <- ggplot(res_med_com) +
+  geom_line(aes(x = v1, color = "dBE"), stat = "density") + 
+  geom_line(aes(x = v2, color = "dBH"), stat = "density") +
+  geom_line(aes(x = -v3, color = "dNBE"), stat = "density") +
+  geom_line(aes(x = -v4, color = "dNBH"), stat = "density") + 
+  facet_grid(group ~.) + 
+  xlab("Drift Rate") +
+  ylab("Density") +
+  theme_pubr() +
+  scale_color_manual(values = c("#FF0033", "#990000", "#000000", "#999999"))
+bj <- bj %>%
+  ggpar(legend.title = " ", legend = c("right")) 
+
+bh <- ggplot(res_med_coms) +
+  geom_line(aes(x = a, color = "Thresholds"), stat = "density") + 
+  geom_line(aes(x = bias, color = "Bias"), stat = "density") +
+  facet_grid(group ~.) + 
+  xlab("Thresholds & Bias") +
+  ylab("Density") +
+  theme_pubr() +
+  scale_color_manual(values = c("#000000", "#999999"))
+bh <- bh %>%
+  ggpar(legend.title = " ", legend = c("right"))
+
+plot_grid(bj, bh, nrow = 2, labels = "auto")
+```
+

@@ -1,0 +1,433 @@
+---
+title: 'PS918 Psychological Models of Choice: Assessment 2 - CPT Model'
+author: 'Student ID: 1860529'
+date: "24/04/2019"
+output: 
+  pdf_document: 
+    toc: yes
+#header-includes:
+geometry: margin = 1in
+mainfont: Times New Roman
+fontsize: 12pt
+editor_options:
+  chunk_output_type: console
+  chunk option : fig.align = "center"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+# Section 1
+
+## Introduction 
+Cumulative prospect theory (CPT) is one of the most influential models of how people make decisions under risk. Parameters in the CPT quantify psychological processes such as loss aversion, subjective values of gains and losses, and subjective probabilities. 
+
+In this report, we used the CPT to analyse people's risky decision-making process. Specifically, we constructed two models - a simple model and an extended model. Furthermore, by changing the number of parameters, we formed three versions of the models. We intended to know if the CPT can capture people's risky decision-making, and whether the extra complexity of the CPT is necessary or not. 
+
+We used no-pooling approaches, and a trial-wise maximum likelihood estimation to find the CPT parameter estimates. After checking the model fits, we have also performed parameter recovery tests. In the following sections, we will first describe the data and the CPT. Moreover, we will analyse the parameter estimates based on our research questions. We will end the report with a summary in the final section.
+
+## Data description 
+The data we used in this report is originally from a paper by Rieskamp (2008). In the experiment, there were 30 participants, with 12 males and 18 females ageing from 20 to 35. Each participant has been asked to choose between two lotteries A and B in 180 pairs of gambles. In each lottery, there are two different payoffs with different probabilities. For instance, in one pair of the gambles, lottery A contains 29% probability of getting 88 units of rewards, and 71% probability of getting 78 units of rewards; while lottery B has 29% probability of getting 53 units of rewards, and 71% probability of getting 91 units of rewards. Therefore, in the dataset, there are 180 data points for each participant and 5400 data points in total.  
+
+In the dataset, there are no missing values. Therefore, after combining people's choices on the two lotteries for each pair of gambles with the gambles, there is no need for us to arrange the data further.
+
+## Model 
+CPT is a further development and variant of prospect theory, which aimed to describe decisions under risk and uncertainties. Compared to prospect theory, CPT does not require editing rules, and weights probabilities cumulatively. Therefore, in some cases, CPT gives more accurate predictions of people's risky decision-making.
+
+More specifically, in CPT, the subjective value of payoff x is defined as: 
+$$
+v(x) = \begin{cases} x^{\alpha}, if\ x \ge 0\\ -\lambda(-x)^{\beta}, if\ x < 0 \end{cases}
+$$ 
+
+In this value function, $\alpha$ and $\beta$ measure the curvature of the subjective value function for gains and losses, individually. The parameter $\alpha$ and $\beta$ usually vary between 0 and 1. The curvature of the subjective value functions will be different as long as $\alpha$ differs from $\beta$. The parameter $\lambda$ quantifies loss aversion. The larger $\lambda$ gets, the more loss averse one person will be.  
+
+There are many functional forms for risky weighting function. In this report, we used mainly two forms: linear form (Lin) for the simple CPT model and Tversky-Kahneman form (TK) for the extended CPT model. 
+
+The linear form is simply that $\pi = p$. For each cumulative probability, the TK form is defined as: $w^{+}(p) = \frac{p^{\gamma}}{(p^{\gamma} + (1 - p)^{\gamma})^(\frac{1}{\gamma})}$; $w^{-}(p) = \frac{p^{\delta}}{(p^{\delta} + (1 - p)^{\delta})^(\frac{1}{\delta})}$, in which the $w^{+}(p)$ represents the capacity for positive payoffs, the $w^{-}(p)$ represents the capacity for negative payoffs. Parameters $\gamma$ and $\delta$ can take values between 0 and 1, as they specify the inverse s-shaped transformation of the weighting function. Furthermore, the decision weighting function $\pi$ comes from substracting relevant capacities, which is defined as: $\pi^{+}_{n} = w^{+}(p_{n})$, $\pi^{-}_{-m} = w^{-}(p_{-m})$. In this case, the cumulaive weightings for the probabilities are: $\pi^{+}_{i} = w^{+}(p_{i} + ... + p_{n}) - w^{+}(p_{i + 1} + ... + p_{n}), 0 \le i \le n - 1$; $\pi^{-}_{i} = w^{-}(p_{-m} + ... + p_{i}) - w^{-}(p_{-m} + ... + p_{i - 1}), 1 - m \le i \le 0$. The value of each lottery in CPT model is therefore: $v(f) = v(f^{+}) + v(f^{-})$, with $v(f^{+}) = \sum_{i = 0}^{n}\pi^{+}_{i}v(x_{i})$, $v(f^{-}) = \sum_{i = -m}^{0}\pi^{-}_{i}v(x_{i})$. 
+
+Additionally, to account for the probabilistic nature of human choice behavior, we used a logistic choice rule to capture the error in people's decision-making: $p(A, B) = \frac{1}{1 + e^{-\phi[v(B) - v(A)]}}$, in which the parameter $\phi$ quantifies the extent to which subjective values guide choice behaviour. We can also consider $\phi$ as a measurement for people's sensitivity and bias towards lottery A and B.   
+
+In this report, we intended to use three different versions of the simple and extended CPT model to analyse our research question. Specifically, the first version does not consider the differences between gains and losses in the curvature of the subjective value function. In other words, there is no parameter $\beta$ in this version of the model. In the second version, we consider all parameters. One thing to notice is that we have four parameters in the simple model ($\alpha, \beta, \lambda, \phi$), and six parameters in the extended model ($\alpha, \beta, \lambda, \gamma, \delta, \phi$). For the third version of our model, we do not consider loss aversion, which means there is no $\lambda$ here. 
+
+## Result
+In this section, we will present the results of our model simulations and parameter recovery. Considering the fact that our extended model is the closest to the original version of the CPT (Tversky and Kahneman, 1992), we will mostly focus on discussing the results of the extended model. 
+
+To obtain the parameter estimates, we constructed a maximum likelihood function, a wrapper function, and a function to generate start values for all the free parameters. No-pooling approach has been applied to generate the maximum likelihood parameter estimates of the CPT to each participant. We have also eliminated the possibilities of local optima by multiplying fitting runs six times, each time with different random starting values. To avoid unnecessary simulations, we constrained the random starting values in a reasonable range. For instance, we restricted the starting values of $\alpha$, $\beta$, $\gamma$, $\delta$, and $\phi$ to be between 0 and 1; and the starting values of $\lambda$ to be between 0 and 2.5. Therefore, we reduce the choice of getting bad estimates. Besides, we set the threshold of the absolute difference between the estimate of first log-likelihood values that is approximately equal to the maximum likelihood value (not the maximum) and the estimates of the best fit to be less than 0.01. By doing so, we can detect if there are any identifiability issues of the parameter estimates and avoid this potential problem.
+
+First of all, we analyse the fitting results based on the parameter values provided by Tversky and Kahneman (1992): $\alpha$ = 0.88, $\beta$ = 0.88, $\gamma$ = 0.61, $\delta$ = 0.69, and $\lambda$ = 2.25. Table 1 indicates the median point estimates of the parameters in both the simple and extended models. The median absolute deviation (MAD) is given in brackets and serves as an indication of the variability of the median. We can see that the value of the median point estimate of parameter $\alpha$ is approximately between 0.80 to 0.90 among all the versions, which corresponds with the value provided by Tversky and Kahneman (1992). The median point value of $\beta$ is slightly larger than $\alpha$, but it still corresponds with our predictions that $\alpha$ and $\beta$ should be between 0 and 1 and have similar values. However, we expected the value of $\lambda$ to be larger than 2, which means most people are loss averse. In our models, the median point values of the parameter $\lambda$ are small. With the increase in the number of free parameters, the value of $\lambda$ becomes smaller. Besides, we can see that the estimates of $\gamma$ and $\delta$ in the extended CPT model match with what we predicted, in the sense that people show tendencies of overweighting small probabilities and underweighting large probabilities. The value of $\phi$ measures people's bias towards the two lotteries. The results for $\phi$ are relatively consistent, and it shows that the participants in the experiment were relatively sensitive towards the differences of payoffs between the two lotteries. 
+
+|        Parameter 	|    $\alpha$ 	|     $\beta$ 	|   $\lambda$ 	|    $\gamma$ 	|    $\delta$ 	|      $\phi$ 	|
+|-----------------:	|------------:	|------------:	|------------:	|------------:	|------------:	|------------:	|
+|     Simple model 	|             	|             	|             	|             	|             	|             	|
+|        Version 1 	| 0.92 (0.23) 	|             	| 1.02 (0.61) 	|             	|             	| 0.11 (0.14) 	|
+|        Version 2 	| 0.79 (0.25) 	| 1.09 (0.57) 	| 0.11 (0.16) 	|             	|             	| 0.24 (0.26) 	|
+|        Version 3 	| 0.90 (0.24) 	| 0.92 (0.23) 	|             	|             	|             	| 0.16 (0.18) 	|
+|   Extended model 	|             	|             	|             	|             	|             	|             	|
+|        Version 1 	| 0.90 (0.24) 	|             	| 1.05 (0.37) 	| 0.71 (0.28) 	| 0.75 (0.31) 	| 0.21 (0.24) 	|
+|        Version 2 	| 0.84 (0.31) 	| 1.00 (0.50) 	| 0.32 (0.47) 	| 0.69 (0.27) 	| 0.72 (0.34) 	| 0.28 (0.36) 	|
+|        Version 3 	| 0.91 (0.24) 	| 0.90 (0.22) 	|             	| 0.63 (0.32) 	| 0.75 (0.32) 	| 0.22 (0.24) 	|
+
+*Table 1*. Median point estimate (maximum likelihood estimation) for each parameter for all three versions of both the simple and the extended model. Median absolute deviation (MAD) enclosed in brackets. 
+
+We intended to know if it is necessary to add the extra complexity in the CPT. Therefore, we have performed several likelihood ratio tests to compare different versions of the models. We simulated all three versions of both the simple and extended models for the whole dataset to get the log-likelihood values. Moreover, to know if the extra complexity in the CPT is necessary compared to a much simpler model, we have also simulated the data based on the Expect Utility (EU) model, which only has two parameters - $\alpha$ and $\phi$. Based on the log-likelihood values, we performed $\chi^{2}$ tests. 
+
+We have also conducted the likelihood ratio test based on the sum of the individual log-likelihood values from the initial fitting of each participant. Considering the two methods gave the same significance level of results, here we only report the results of the first method in details. 
+
+Compared to the EU model, all three versions of the extended models are significant ($\chi^{2}$ = 155.31 for version one, $\chi^{2}$ = 166.13 for version two, $\chi^{2}$ = 155.43 for version three, with *p*s < 0.01). Also, the result of the test between EU model and version two of the simple model is also significant ($\chi^{2}$ = 23.00, *p* < 0.01). However, the result of likelihood ratio tests between the EU model and version one and three of the simple model are not significant ($\chi^{2}$ = 0.45, *p* = 0.50 for version one; $\chi^{2}$ = 1.59, *p* = 0.21 for version three). 
+
+For the simple model, compared to the first version, by adding $\beta$ in the model, the second version is significant ($\chi^{2}$ = 22.55, *p* < 0.01). Similarly, compared to the third version of the simple model, having $\lambda$ representing loss aversion is significant ($\chi^{2}$ = 21.41, *p* < 0.01). Also, for the extended model, compared to version one and version three individually, adding $\beta$ ($\chi^{2}$ = 10.81, *p* < 0.01) and loss aversion $\lambda$ ($\chi^{2}$ = 10.70, *p* < 0.01) are both significant in version two model. 
+
+On the other hand, when we compare the simple model with the extended model, we found that having the extra parameters $\gamma$ and $\delta$ for the probability weighting function is significant ($\chi^{2}$ = 154.86 for the comparison between the two first versions; $\chi^{2}$ = 143.12 for the comparison between the second versions; $\chi^{2}$ = 153.83 for the comparison between the third versions, with all *p*s < 0.01). 
+
+Based on all the results above, we can conclude that adding extra complexity gives more explanatory power for the CPT. Therefore, for the rest of the analyses, we will focus on analysing the extended model. 
+
+In the extended model, there is a problem that parameters are correlated over participants (Figure 1). Parameter $\alpha$ and $\phi$ have a strong negative correlation (*p*s < 0.01) across all three versions. The reason behind is that when $\alpha$ increases, the curvature of the subjective value for gains increases, the differences between the two lotteries increase. Therefore, people become less sensitive to the same unit of difference as before, which means the $\phi$ (bias) becomes smaller. This mechanism also applies for the correlation between $\beta$ and $\phi$ ($R^{2}$ = 0.11, *p* = 0.07 for version two; $R^{2}$ = 0.34, *p* < 0.01 for version three). Parameter $\alpha$ and $\beta$, $\gamma$ and $\delta$ are also positively correlated across versions (*p*s < 0.02). The reason is that each pair captures the same character of the model, for gains and losses individually.  
+
+The explanation behind the correlations between $\gamma$ and $\phi$ ($R^{2}$ = 0.25, *p* < 0.01 for version one; $R^{2}$ = 0.18, *p* = 0.02 for version two and three), $\delta$ and $\phi$ ($R^{2}$ = 0.24, *p* < 0.01 for version one; $R^{2}$ = 0.12, *p* = 0.07 for version two; $R^{2}$ = 0.11, *p* = 0.07 for version three) is that, along with the decrease of $\gamma$ or $\delta$, people start to be more overweighting towards small probabilities and underweighting towards large probabilities. Therefore, people's choice behaviour is determined more by the difference in subjective value for the two lotteries, which means the bias $\phi$ is larger. 
+
+Moreover, there is a weak correlation between $\beta$ and $\lambda$ in version two model ($R^{2}$ = 0.16, *p* = 0.03). One possible explaination is that when $\beta$ increases, the difference between two losses becomes smaller, thus the total loss people face will be relatively less, people will become less loss averse - $\lambda$ decreases. However, we need to remember that the estimates of $\lambda$ in the second version is not ideal. This poor fitting results of $\lambda$ could also affect the correlation between $\beta$ and $\lambda$. 
+
+```{r a, include=FALSE}
+library("tidyverse")
+library("afex")
+library("car")
+library("ggpubr")
+library("cowplot")
+library("readxl")
+theme_set(theme_bw(base_size = 15) +
+            theme(legend.position="bottom",
+                  panel.grid.major.x = element_blank(),
+                  panel.grid.minor.x = element_blank()))
+theme_update(plot.title = element_text(hjust = 0.5, face = "plain"))
+set_sum_contrasts()
+#LOAD DATA
+gamble <- read_csv("gambles.csv")
+choice <- read_xls("DATA_Study2_Rieskamp_2008_.xls", 3)
+
+#ARRANGE DATA
+cptdata <- cbind(choice, gamble) %>% 
+  gather(id, choice, `1`:`30`) %>% 
+  #select(-`choice pair__1`, -subjects, -`choice pair`) %>% 
+  select(id, choicepair, A1_prob, A1_payoff, A2_prob, A2_payoff, 
+         B1_prob, B1_payoff, B2_prob, B2_payoff, choice)
+#save(res_cpt1_1, file = "res_cpt1_1.rda")
+load(file = "res_cpt1_1.rda")
+any(is.na(res_cpt1_1)) ##check if there is any bad results
+res_cpt1_1
+
+#save(ress11, file = "ress11.rda")
+load(file = "ress11.rda")
+ress11
+
+#save(res_cpt1_2, file = "res_cpt1_2.rda")
+load(file = "res_cpt1_2.rda")
+any(is.na(res_cpt1_2))
+res_cpt1_2
+
+#save(ress12, file = "ress12.rda")
+load(file = "ress12.rda")
+ress12
+
+#save(res_cpt1_3, file = "res_cpt1_3.rda")
+load(file = "res_cpt1_3.rda")
+any(is.na(res_cpt1_3))
+res_cpt1_3
+
+#save(ress13, file = "ress13.rda")
+load(file = "ress13.rda")
+ress13
+
+#save(res_cpt2_1, file = "res_cpt2_1.rda")
+load(file = "res_cpt2_1.rda")
+any(is.na(res_cpt2_1))
+res_cpt2_1
+
+#save(ress21, file = "ress21.rda")
+load(file = "ress21.rda")
+ress21
+
+#save(res_cpt2_2, file = "res_cpt2_2.rda")
+load(file = "res_cpt2_2.rda")
+any(is.na(res_cpt2_2))
+res_cpt2_2
+
+#save(ress22, file = "ress22.rda")
+load(file = "ress22.rda")
+ress22
+
+#save(res_cpt2_3, file = "res_cpt2_3.rda")
+load(file = "res_cpt2_3.rda")
+any(is.na(res_cpt2_3))
+res_cpt2_3
+
+#save(ress23, file = "ress23.rda")
+load(file = "ress23.rda")
+ress23
+
+co1 <- ggscatter(res_cpt2_1, x = "alpha", y = "phi", add = "reg.line") +
+  stat_cor(aes(label = paste(..rr.label.., ..p.label.., sep = "~`,`~"))) + 
+  xlab("Alpha") +
+  ylab("Bias")
+co2 <- ggscatter(res_cpt2_3, x = "beta", y = "phi", add = "reg.line") +
+  stat_cor(aes(label = paste(..rr.label.., ..p.label.., sep = "~`,`~"))) +
+  xlab("Beta") +
+  ylab("Bias")
+co3 <- ggscatter(res_cpt2_1, x = "gamma", y = "phi", add = "reg.line") +
+  stat_cor(aes(label = paste(..rr.label.., ..p.label.., sep = "~`,`~"))) +
+  xlab("Gamma") +
+  ylab("Bias")
+co4 <- ggscatter(res_cpt2_1, x = "delta", y = "phi", add = "reg.line") +
+  stat_cor(aes(label = paste(..rr.label.., ..p.label.., sep = "~`,`~"))) +
+  xlab("Delta") +
+  ylab("Bias")
+co5 <- ggscatter(res_cpt2_3, x = "alpha", y = "beta", add = "reg.line") +
+  stat_cor(aes(label = paste(..rr.label.., ..p.label.., sep = "~`,`~"))) +
+  xlab("Alpha") +
+  ylab("Beta")
+co6 <- ggscatter(res_cpt2_1, x = "gamma", y = "delta", add = "reg.line") +
+  stat_cor(aes(label = paste(..rr.label.., ..p.label.., sep = "~`,`~"))) +
+  xlab("Gamma") +
+  ylab("Delta")
+``` 
+```{r aa, echo=FALSE, fig.align='center', fig.height=5, fig.width=10, message=FALSE, warning=FALSE}
+plot_grid(co1, co2, co3, co4, co5, co6, ncol = 4, labels = "auto")
+```
+
+*Figure 1*. Correlations of pairs of parameters for the extended model. Plots a, c, d, f are based on the first version, plots b and e are based on the third version. The solid diagonal line indicates perfect correlation where the two parameters exactly coincide.
+
+The correlations between $\alpha$ and $\beta$, $\gamma$ and $\delta$ are likely to occur as the pairs quantify the same characters of subjective values and probabilities, for gains and losses individually. However, other correlations mentioned above can be problematic as in that it will cause the multicollinearity problem in our model analyses. This problem will further influence the results of the model prediction. 
+
+There are two main methods to avoid the multicollinearity problem. One thing we can do is to remove some of the highly correlated parameters such as $\beta$, and $\delta$, by performing a stepwise procedure. After eliminating $\beta$ and $\delta$, there will be only two pairs of parameters that are significantly correlated - $\alpha$ and $\phi$, $\gamma$ and $\phi$. The strong correlations might still affect our results. Therefore, we can also conduct a principal component analysis (PCA). PCA is a statistical procedure that uses an orthogonal transformation to convert a set of observations of possibly correlated variables into a set of values of linearly uncorrelated variables called principal components. By doing so, we can potentially control the multicollinearity problem.
+
+We have also simulated the data based on the median values of the parameter estimates of the initial extended model fits and re-fitted the models to assess parameter recoveries. As one can see from Figure 2, in general, considering the fact that the parameter recovery of the CPT usually shows bad results, our model has a high recovery. Parameter recovery of version one and three is generally better than the recovery of version two. For $\lambda$ and $\phi$, the model recovery is good. Compared to $\alpha$ and $\beta$, the model recovery of $\gamma$ and $\delta$ is relatively poor. 
+
+```{r b, include=FALSE}
+#save(res_cpt2_1r, file = "res_cpt2_1r.rda")
+load(file = "res_cpt2_1r.rda")
+any(is.na(res_cpt2_1r))
+res_cpt2_1r
+
+#save(res_cpt2_2r, file = "res_cpt2_2r.rda")
+load(file = "res_cpt2_2r.rda")
+any(is.na(res_cpt2_2r))
+res_cpt2_2r
+
+#save(res_cpt2_3r, file = "res_cpt2_3r.rda")
+load(file = "res_cpt2_3r.rda")
+any(is.na(res_cpt2_3r))
+res_cpt2_3r
+
+#PARAMETER RECOVERY (EXTENDED MODEL)
+aa <- cbind(res_cpt2_1, res_cpt2_1r) %>% 
+  subset(., select = which(!duplicated(names(.)))) 
+bb <- cbind(res_cpt2_2, res_cpt2_2r) %>% 
+  subset(., select = which(!duplicated(names(.)))) 
+cc <- cbind(res_cpt2_3, res_cpt2_3r) %>% 
+  subset(., select = which(!duplicated(names(.)))) 
+
+qq <- function(data, x) {
+  q1 <- ggplot(data) + 
+    geom_line(aes(x = alpha), stat = "density") +
+    geom_line(aes(x = alpha_r), stat = "density", linetype = "dotted") + 
+    geom_line(aes(x = beta, color = ""), stat = "density") +
+    geom_line(aes(x = beta_r, color = "gw"), stat = "density", linetype = "dotted") +
+    xlab("") + ylab("Density") + ggtitle("Alpha and Beta") + 
+    geom_vline(xintercept = median(data$alpha)) +
+    geom_vline(xintercept = median(data$beta), color = "#990000") +
+    scale_color_manual(values = c("#990000", "#990000")) 
+  q1 <- q1 %>%
+    ggpar(legend.title = " ", legend = "none") +
+    theme(axis.text.y = element_blank(),
+          axis.ticks = element_blank())
+  q2 <- ggplot(data) + 
+    geom_line(aes(x = lambda), stat = "density") +
+    geom_line(aes(x = lambda_r), stat = "density", linetype = "dotted") + 
+    xlab("") + ylab("Density") + ggtitle("Lambda") +
+    geom_vline(xintercept = median(data$lambda)) +
+    theme(axis.text.y = element_blank(),
+          axis.ticks = element_blank())
+  q3 <- ggplot(data) + 
+    geom_line(aes(x = gamma), stat = "density") +
+    geom_line(aes(x = gamma_r), stat = "density", linetype = "dotted") + 
+    geom_line(aes(x = delta, color = ""), stat = "density") +
+    geom_line(aes(x = delta_r, color = "gw"), stat = "density", linetype = "dotted") + 
+    xlab("") + ylab("Density") + ggtitle("Gamma and Delta") +
+    geom_vline(xintercept = median(data$gamma)) +
+    geom_vline(xintercept = median(data$delta), color = "#990000") +
+    scale_color_manual(values = c("#990000", "#990000")) 
+  q3 <- q3 %>%
+    ggpar(legend.title = " ", legend = "none") +
+    theme(axis.text.y = element_blank(),
+          axis.ticks = element_blank())
+  ylab("Density") 
+  q4 <- ggplot(data) + 
+    geom_line(aes(x = phi), stat = "density") +
+    geom_line(aes(x = phi_r), stat = "density", linetype = "dotted") + 
+    xlab("") + ylab("Density") + ggtitle("Phi") +
+    geom_vline(xintercept = median(data$phi)) +
+    theme(axis.text.y = element_blank(),
+          axis.ticks = element_blank())
+  if (x == 1) {
+    q1 <- ggplot(data) + 
+      geom_line(aes(x = alpha), stat = "density") +
+      geom_line(aes(x = alpha_r), stat = "density", linetype = "dotted") + 
+      xlab("") + ylab("Density") + ggtitle("Alpha") + 
+      geom_vline(xintercept = median(data$alpha)) + 
+      theme(axis.text.y = element_blank(),
+            axis.ticks = element_blank())
+    plot_grid(q1 + ylim(0, 6), q3 + ylim(0, 6), 
+              q4 + ylim(0, 6), q2 + ylim(0, 6), ncol = 4)
+  } else if (x == 2) {
+    plot_grid(q1 + ylim(0, 4.5), q3 + ylim(0, 4.5),
+              q4 + ylim(0, 4.5), q2 + ylim(0, 4.5), ncol = 4)
+  } else {
+    plot_grid(q1 + ylim(0, 6), q3 + ylim(0, 6), q4 + ylim(0, 6), ncol = 4)
+  }
+}
+```
+```{r bb, echo=FALSE, fig.align='center', fig.height=8, fig.width=10, message=FALSE, warning=FALSE}
+plot_grid(qq(aa, 1), qq(bb, 2), qq(cc, 3), ncol = 1, labels = "auto")
+```
+
+*Figure 2*. Density distributions of individual-level parameter estimates for the extended model. Plot a, b, and c represent the distributions for version one, version two, and version three of the model. The solid lines stand for the initial model fits, and the dotted lines represent for the refit model fits. Vertical lines represent the median values of each parameter estimates for the initial model fits. The coloured distributions and lines represent the distributions and lines for $\beta$ and $\delta$.  
+
+Additionally, apart from checking the median point estimates of our parameters, we have also checked the model fits for the extended model. Firstly, We computed the average choice proportions of choosing lottery B over A across participants. On top of the parameter estimates, We obtained the predicted proportions. However, the CPT cannot capture the choice proportions for choosing lottery B over lottery A well. The reason behind is that lottery A and B do not have significant differences in their payoffs and risky levels. Therefore, we further explored the model fits by varying one of the parameters while keeping the other parameters constant in the version two extended model. As Figure 3 indicates, the parameters are well constrained by the data. The log-likelihood values hit the maximum when the values of varied parameter get closer to the estimated values in our model. The model fits here are good. 
+
+```{r eeff, include=FALSE}
+#LOGIT FUNCTION
+logit_f <- function(A1_payoff, A2_payoff, A1_prob, 
+                    B1_payoff, B2_payoff, B1_prob, 
+                    alpha, beta, lambda, gamma, delta, phi) {
+  u <- function(x) {
+    if (x > 0) {
+      (abs(x)^alpha)
+    } else {
+      (sign(x)*lambda*(abs(x)^beta))
+    }
+  } ##utility function
+  w <- function(x, p) {
+    if (x > 0) {
+      (p^gamma)/(((p^gamma) + ((1 - p)^gamma))^(1/gamma))
+    } else {
+      (p^delta)/(((p^delta) + ((1 - p)^delta))^(1/delta))
+    }
+  } ##weighting function
+  v <- function(pf1, pf2, ppf1) {
+    max <- max(pf1, pf2)
+    min <- min(pf1, pf2)
+    if (max == pf1) {
+      pf <- ppf1
+    } else if (max == pf2) {
+      pf <- 1 - ppf1
+    }
+    if (pf1 >= 0 & pf2 >= 0) {
+      w(max, pf)*u(max) + 
+        (w(max, 1) - w(max, pf))*u(min)
+    } else if (pf1 <= 0 & pf2 <= 0) {
+      w(min, 1 - pf)*u(min) + 
+        (w(min, 1) - w(min, 1 - pf))*u(max)
+    } else {
+      w(max, pf)*u(max) + 
+        w(min, 1 - pf)*u(min)
+    }
+  } ##value function
+  va <- v(A1_payoff, A2_payoff, A1_prob)
+  vb <- v(B1_payoff, B2_payoff, B1_prob)
+  vdiff <- vb - va
+  return(1/(1 + exp(-phi*vdiff)))
+}
+
+logit <- cptdata %>% 
+  rowwise() %>% 
+  mutate(logit = logit_f(A1_payoff, A2_payoff, A1_prob, 
+                         B1_payoff, B2_payoff, B1_prob, 
+                         alpha = 0.1, beta = 0.1, lambda = 2, 
+                         gamma = 1, delta = 1, phi = 2)) 
+
+#LIKELIHOOD MODEL
+ll_cpt <- function(alpha, beta, lambda, gamma, delta, phi, df) {
+  pd <- rowwise(df) %>% summarise(l = logit_f(A1_payoff, A2_payoff, A1_prob,
+                                              B1_payoff, B2_payoff, B1_prob, 
+                                              alpha, beta, lambda, gamma, delta,
+                                              phi))
+  pb <- as.vector(pd$l, mode = "numeric")
+  density <- vector("numeric", length(df$choice))
+  density[df$choice == 0] <- 1 - pb[df$choice == 0]
+  density[df$choice == 1] <- pb[df$choice == 1]
+  if (any(density == 0)) {
+    return(1e6)
+  } else {
+    return(-sum(log(density)))
+  }
+}
+##PARAMETER VALUES
+
+x <- seq(0, 1, .01)
+y <- sapply(x, ll_cpt, beta = ress22$beta, lambda = ress22$lambda, gamma = ress22$gamma, 
+            delta = ress22$delta, phi = ress22$phi, df = cptdata)
+
+##Effect of varying alpha
+
+m <- seq(0, 1.5, .01)
+n <- sapply(m, ll_cpt, alpha = ress22$alpha, lambda = ress22$lambda, gamma = ress22$gamma, 
+            delta = ress22$delta, phi = ress22$phi, df = cptdata)
+
+##Effect of varying beta
+
+o <- seq(0, 1, .01)
+p <- sapply(o, ll_cpt, alpha = ress22$alpha, beta = ress22$beta, gamma = ress22$gamma, 
+            delta = ress22$delta, phi = ress22$phi, df = cptdata)
+
+##Effect of varying lambda
+
+r <- seq(0, 1, .01)
+s <- sapply(r, ll_cpt, alpha = ress22$alpha, beta = ress22$beta, lambda = ress22$lambda, 
+            delta = ress22$delta, phi = ress22$phi, df = cptdata)
+
+##Effect of varying gamma
+
+u <- seq(0, 1, .01)
+v <- sapply(u, ll_cpt, alpha = ress22$alpha, beta = ress22$beta, lambda = ress22$lambda, 
+            gamma = ress22$gamma, phi = ress22$phi, df = cptdata)
+
+##Effect of varying delta
+
+a <- seq(0, 0.5, .01)
+b <- sapply(a, ll_cpt, alpha = ress22$alpha, beta = ress22$beta, lambda = ress22$lambda, 
+            gamma = ress22$gamma, delta = ress22$delta, df = cptdata)
+
+##Effect of varying phi
+```
+```{r ffgg, echo=FALSE, results="hide", fig.align='center', fig.height=6, fig.width=10, message=FALSE, warning=FALSE}
+par(mfrow = c(2, 3))
+plot(-y ~ x, xlab = "Alpha", ylab = "Loglikelihood", ylim = c(-4000, -3000))
+plot(-n ~ m, xlab = "Beta", ylab = "Loglikelihood", ylim = c(-4000, -3000)) 
+plot(-p ~ o, xlab = "Lambda", ylab = "Loglikelihood", ylim = c(-4000, -3000)) 
+plot(-s ~ r, xlab = "Gamma", ylab = "Loglikelihood", ylim = c(-4000, -3000)) 
+plot(-y ~ x, xlab = "Delta", ylab = "Loglikelihood", ylim = c(-4000, -3000)) 
+plot(-b ~ a, xlab = "Phi", ylab = "Loglikelihood", ylim = c(-4000, -3000)) 
+```
+
+*Figure 3*. Model fits for the extended model. The values for the constant parameters in each plot are from the simulation results of the aggregated fitting based on the whole dataset for the version two extended model. 
+
+## Conclusion 
+Based on the data we used, the CPT can capture people's decision-making when facing risk and uncertainties to some degree. 
+
+In general, apart from the estimates of $\lambda$, the parameter estimates of both the simple and extended model agree with the parameter values provided by Tversky and Kahneman (1992). Based on the results of likelihood ratio tests, adding more parameters to measure the curvature of the subjective value of losses and loss aversion gives the CPT more explanatory power. Compared to the simple model, the extended model provides more information about people's risky decision-making. 
+
+However, we found that increase model complexity does not necessarily provide better model fits and parameter recovery results. Increasing the model complexity will decrease the quality of model recovery. Based on the dataset we used, the first and third versions of the extended model have higher recoveries compared to the second version. However, it is difficult to quantify and measure the parameter recovery of the CPT. 
+
+One thing to notice here is that when using the CPT, especially the extended model, there is multicollinearity problem. Therefore we need to modify the model, either to eliminate parameters or to use the principal component analysis (PCA). Further investigation of the CPT is needed to obtain more accurate results.
+
+
+## Reference
+Nilsson, H., Rieskamp, J., & Wagenmakers, E. J. (2011). Hierarchical Bayesian parameter estimation for cumulative prospect theory. *Journal of Mathematical Psychology*, *55*(1), 84-93.
+
+Rieskamp, J. (2008). The probabilistic nature of preferential choice. *Journal of Experimental Psychology: Learning, Memory, and Cognition*, *34*(6), 1446.
+
+Stott, H. P. (2006). Cumulative prospect theory's functional menagerie. *Journal of Risk and uncertainty*, *32*(2), 101-130.
+
+Tversky, A., & Kahneman, D. (1992). Advances in prospect theory: Cumulative representation of uncertainty. *Journal of Risk and uncertainty*, *5*(4), 297-323.
+
+Walasek, L., Mullett, T. L., & Stewart, N. (2018). A meta-analysis of loss aversion in risky contexts.
+
